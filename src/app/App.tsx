@@ -32,6 +32,8 @@ export function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [debug, setDebug] = useState(false);
+  // Message ids whose inline title-offer preview player is currently shown.
+  const [previewOpenIds, setPreviewOpenIds] = useState<Set<string>>(new Set());
   const pendingResume = useRef<string | null>(null);
 
   // Lock the background from scrolling while any modal dialog is open, so the
@@ -69,10 +71,44 @@ export function App() {
     }
   }
 
-  function handleAction(action: AssistantAction) {
+  function handleAction(action: AssistantAction, messageId: string) {
     if (action.kind === "connect") {
       pendingResume.current = action.resumeText ?? null;
       setAuthOpen(true);
+      return;
+    }
+    if (action.kind === "preview") {
+      // Toggle the inline preview player for the message that offered it.
+      setPreviewOpenIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(messageId)) next.delete(messageId);
+        else next.add(messageId);
+        return next;
+      });
+      return;
+    }
+    if (action.kind === "open" && action.contentId) {
+      void openInPeacock(action.contentId);
+    }
+  }
+
+  async function openInPeacock(contentId: string) {
+    setPending(true);
+    try {
+      const res: AgentResponse = await agent.openTitle(contentId);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: newId(),
+          role: "assistant",
+          text: res.text,
+          card: res.card,
+          actions: res.actions,
+          toolName: res.toolName,
+        },
+      ]);
+    } finally {
+      setPending(false);
     }
   }
 
@@ -86,6 +122,7 @@ export function App() {
 
   function resetConversation() {
     setMessages([]);
+    setPreviewOpenIds(new Set());
     agent.ctx.reset();
   }
 
@@ -96,6 +133,7 @@ export function App() {
         messages={messages}
         pending={pending}
         debug={debug}
+        previewOpenIds={previewOpenIds}
         onSend={handleSend}
         onAction={handleAction}
       />

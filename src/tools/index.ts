@@ -3,7 +3,12 @@ import type { ToolDefinition } from "./tool";
 import { getAccountSummaryTool } from "./account";
 import { getSubscriptionTool } from "./subscription";
 import { getEntitlementsTool, getSupportedCapabilitiesTool } from "./entitlements";
-import { getTitleDetailsTool, searchCatalogTool } from "./catalog";
+import {
+  getPlaybackDestinationTool,
+  getPreviewTool,
+  getTitleDetailsTool,
+  searchCatalogTool,
+} from "./catalog";
 import {
   addToWatchlistTool,
   getWatchlistTool,
@@ -23,6 +28,8 @@ export const TOOLS: ToolDefinition<any, any>[] = [
   removeFromWatchlistTool,
   searchCatalogTool,
   getTitleDetailsTool,
+  getPreviewTool,
+  getPlaybackDestinationTool,
 ];
 
 const TOOLS_BY_NAME: Record<string, ToolDefinition<any, any>> =

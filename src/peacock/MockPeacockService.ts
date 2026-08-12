@@ -9,11 +9,18 @@ import {
   type CatalogTitle,
   type Entitlements,
   type PlanChangePreview,
+  type PlaybackDestination,
+  type PreviewInfo,
   type Subscription,
 } from "./types";
 import { getPersonaFixture } from "../data/personas";
 import { getPlan } from "../data/plans";
-import { findTitleById, searchCatalogData } from "../data/catalog";
+import {
+  findTitleById,
+  getPlaybackData,
+  getPreviewData,
+  searchCatalogData,
+} from "../data/catalog";
 import { prototypeStore } from "../state/prototype-store";
 
 type Store = typeof prototypeStore;
@@ -154,6 +161,16 @@ export class MockPeacockService implements PeacockService {
     const t = findTitleById(contentId);
     if (!t) throw new Error(`Unknown title: ${contentId}`);
     return t;
+  }
+
+  async getPreview(contentId: string): Promise<PreviewInfo> {
+    if (!findTitleById(contentId)) throw new Error(`Unknown title: ${contentId}`);
+    return getPreviewData(contentId);
+  }
+
+  async getPlaybackDestination(contentId: string): Promise<PlaybackDestination> {
+    if (!findTitleById(contentId)) throw new Error(`Unknown title: ${contentId}`);
+    return getPlaybackData(contentId);
   }
 
   private assertManageable(): string {

@@ -12,6 +12,13 @@ function connectedAgent() {
   return new Agent(service, new ConversationState(), 0);
 }
 
+/** Build a disconnected agent (no persona connected) for the connect flow. */
+function disconnectedAgent() {
+  prototypeStore.clearAll();
+  const service = new MockPeacockService(prototypeStore);
+  return new Agent(service, new ConversationState(), 0);
+}
+
 describe("Agent intent understanding", () => {
   beforeEach(() => {
     prototypeStore.clearAll();
@@ -111,5 +118,102 @@ describe("Agent intent understanding", () => {
     const titles = res.card?.kind === "search" ? res.card.data : [];
     expect(titles.length).toBe(0);
     expect(res.text.toLowerCase()).toMatch(/similar|genre|comedy|drama|available/);
+  });
+});
+
+describe("Content discovery + Peacock playback handoff", () => {
+  beforeEach(() => {
+    prototypeStore.clearAll();
+  });
+
+  it("resolves 'I want to watch Love Island USA' to a title offer, not a literal search", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("I want to watch Love Island USA");
+    expect(res.card?.kind).toBe("title_offer");
+    expect(res.toolName).toBe("get_title_details");
+    const title = res.card?.kind === "title_offer" ? res.card.data : undefined;
+    expect(title?.title).toBe("Love Island USA");
+    expect(title?.availableOnPeacock).toBe(true);
+    // The offer should include a preview action and an open action when connected.
+    const kinds = (res.actions ?? []).map((a) => a.kind);
+    expect(kinds).toContain("preview");
+    expect(kinds).toContain("open");
+  });
+
+  it("answers availability for 'Is Love Island USA on Peacock?'", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("Is Love Island USA on Peacock?");
+    expect(res.card?.kind).toBe("title_offer");
+    expect(res.text.toLowerCase()).toContain("available on peacock");
+  });
+
+  it("offers to connect when a disconnected user asks to watch a title", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("I want to watch Love Island USA");
+    // Still shows the offer + preview, but the primary action is to connect.
+    expect(res.card?.kind).toBe("title_offer");
+    const kinds = (res.actions ?? []).map((a) => a.kind);
+    expect(kinds).toContain("preview");
+    expect(kinds).toContain("connect");
+    expect(kinds).not.toContain("open");
+  });
+
+  it("previews the current title via context ('Can I preview it?')", async () => {
+    const agent = connectedAgent();
+    await agent.respond("I want to watch Love Island USA");
+    const res = await agent.respond("Can I preview it?");
+    expect(res.card?.kind).toBe("title_offer");
+    expect(res.toolName).toBe("get_preview");
+    const preview = res.card?.kind === "title_offer" ? res.card.preview : undefined;
+    expect(preview?.previewAvailable).toBe(true);
+  });
+
+  it("requires a connection to open a title, then resumes after connecting", async () => {
+    const agent = disconnectedAgent();
+    await agent.respond("I want to watch Love Island USA");
+    const gated = await agent.respond("Open it in Peacock");
+    expect(gated.card?.kind).toBe("connect");
+    const connectAction = (gated.actions ?? []).find((a) => a.kind === "connect");
+    expect(connectAction?.resumeText).toBeTruthy();
+
+    // Simulate the connect + resume that the UI performs.
+    prototypeStore.connect("alex");
+    const resumed = await agent.respond(connectAction!.resumeText!);
+    expect(resumed.card?.kind).toBe("handoff");
+    expect(resumed.toolName).toBe("get_playback_destination");
+  });
+
+  it("routes the post-connect resume text 'Open <Title> in Peacock' to a handoff", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("Open Love Island USA in Peacock");
+    expect(res.card?.kind).toBe("handoff");
+    expect(res.toolName).toBe("get_playback_destination");
+  });
+
+  it("hands off to Peacock when a connected user opens a title", async () => {
+    const agent = connectedAgent();
+    await agent.respond("I want to watch Love Island USA");
+    const res = await agent.openTitle("ttl_love_island_usa");
+    expect(res.card?.kind).toBe("handoff");
+    const dest = res.card?.kind === "handoff" ? res.card.destination : undefined;
+    expect(dest?.destination).toBe("Peacock");
+    expect(dest?.destinationUrl).toBeTruthy();
+  });
+
+  it("returns full details for 'Tell me more about it' using context", async () => {
+    const agent = connectedAgent();
+    await agent.respond("I want to watch Love Island USA");
+    const res = await agent.respond("Tell me more about it");
+    expect(res.card?.kind).toBe("title");
+    expect(res.toolName).toBe("get_title_details");
+    const title = res.card?.kind === "title" ? res.card.data : undefined;
+    expect(title?.title).toBe("Love Island USA");
+  });
+
+  it("still routes 'add Love Island USA to my watchlist' to the watchlist, not a title offer", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("Add Love Island USA to my watchlist");
+    expect(res.card?.kind).toBe("watchlist");
+    expect(res.toolName).toBe("add_to_watchlist");
   });
 });

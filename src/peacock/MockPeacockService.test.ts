@@ -100,4 +100,18 @@ describe("MockPeacockService", () => {
     expect(caps.length).toBeGreaterThan(0);
     expect(caps.some((c) => c.id === "view_subscription")).toBe(true);
   });
+
+  it("returns simulated preview info for Love Island USA (no connection required)", async () => {
+    const preview = await service().getPreview("ttl_love_island_usa");
+    expect(preview.previewAvailable).toBe(true);
+    expect(preview.durationSeconds).toBeGreaterThan(0);
+    expect(preview.previewSource).toBeTruthy();
+  });
+
+  it("returns the simulated Peacock playback destination for a title", async () => {
+    const dest = await service().getPlaybackDestination("ttl_love_island_usa");
+    expect(dest.destination).toBe("Peacock");
+    expect(dest.connectionRequired).toBe(true);
+    expect(dest.destinationUrl).toBeTruthy();
+  });
 });

@@ -10,6 +10,8 @@ import type {
   Capability,
   CatalogTitle,
   Entitlements,
+  PlaybackDestination,
+  PreviewInfo,
   Subscription,
 } from "../peacock/types";
 import type { AgentResponse, AssistantAction } from "./types";
@@ -46,6 +48,25 @@ export class Agent {
   }
 
   /**
+   * Directly request the Peacock playback handoff for a specific title, used by
+   * the "Open in Peacock" action button. Requires a connection; when
+   * disconnected it returns the connect prompt with a resume that re-opens this
+   * title after authorization.
+   */
+  async openTitle(contentId: string): Promise<AgentResponse> {
+    if (this.delayMs > 0) await sleep(this.delayMs);
+    try {
+      const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId });
+      this.ctx.setLastTitle(title.contentId);
+      return await this.handleOpenInPeacock(contentId, `Open ${title.title} in Peacock`);
+    } catch (e) {
+      if (e instanceof PeacockNotConnectedError) return this.connectPrompt(`Open ${contentId} in Peacock`);
+      if (e instanceof PeacockActionUnavailableError) return { text: e.message };
+      return { text: `Sorry — the prototype hit an error: ${(e as Error).message}` };
+    }
+  }
+
+  /**
    * Route the raw text, but first honour a pending recommendation follow-up: if
    * the previous turn asked the user to narrow things down, a short reply such
    * as "something funny" or "comedy" completes that recommendation.
@@ -63,6 +84,14 @@ export class Agent {
 
   private connectAction(resumeText?: string): AssistantAction {
     return { id: "connect", kind: "connect", label: "Connect Peacock", resumeText };
+  }
+
+  private previewAction(contentId: string): AssistantAction {
+    return { id: "preview", kind: "preview", label: "Watch a preview", contentId };
+  }
+
+  private openAction(contentId: string, label: string): AssistantAction {
+    return { id: "open", kind: "open", label, contentId };
   }
 
   private connectPrompt(resumeText: string): AgentResponse {
@@ -140,6 +169,16 @@ export class Agent {
         return this.handleWatchlistWrite(intent.titleQuery, input, true);
       case "remove_from_watchlist":
         return this.handleWatchlistWrite(intent.titleQuery, input, false);
+      case "watch_title":
+        return this.handleWatchTitle(intent.contentId);
+      case "title_availability":
+        return this.handleTitleAvailability(intent.contentId);
+      case "preview_title":
+        return this.handlePreviewTitle(intent.contentId);
+      case "open_in_peacock":
+        return this.handleOpenInPeacock(intent.contentId, input);
+      case "title_details":
+        return this.handleTitleDetails(intent.contentId);
       case "recommend":
         return this.handleRecommend(intent.criteria);
       case "search_catalog":
@@ -228,5 +267,136 @@ export class Agent {
         ? `Removed ${title.title} from your watchlist.`
         : `${title.title} wasn't on your watchlist.`;
     return { text, card: { kind: "watchlist", data: list }, toolName: tool };
+  }
+
+  /**
+   * Resolve the title a follow-up refers to: an explicitly named contentId when
+   * present, otherwise the last title referenced in the conversation.
+   */
+  private resolveContextTitle(contentId?: string): string | null {
+    return contentId ?? this.ctx.getLastTitle();
+  }
+
+  /**
+   * "I want to watch X" — present a discovery offer for the title. Shows Peacock
+   * availability and offers a preview plus a connect-or-open call to action. No
+   * connection is required just to see the offer.
+   */
+  private async handleWatchTitle(contentId: string): Promise<AgentResponse> {
+    const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId });
+    this.ctx.setLastTitle(title.contentId);
+    if (!title.availableOnPeacock) {
+      return {
+        text: `${title.title} isn't available on Peacock in this demo.`,
+        card: { kind: "title", data: title },
+        toolName: "get_title_details",
+      };
+    }
+    const preview = title.previewAvailable
+      ? await runTool<PreviewInfo>(this.service, "get_preview", { contentId })
+      : undefined;
+    const connected = this.service.isConnected();
+    const actions: AssistantAction[] = [];
+    if (preview?.previewAvailable) actions.push(this.previewAction(title.contentId));
+    if (connected) actions.push(this.openAction(title.contentId, "Open in Peacock"));
+    else actions.push(this.connectAction(`Open ${title.title} in Peacock`));
+    return {
+      text: connected
+        ? `${title.title} is available on Peacock. You can watch a preview here, or open it in Peacock to start watching.`
+        : `${title.title} is available on Peacock. You can watch a preview right here. To start watching, I'll connect your Peacock account first.`,
+      card: { kind: "title_offer", data: title, preview },
+      actions,
+      toolName: "get_title_details",
+    };
+  }
+
+  /** "Is X on Peacock?" / "Where can I watch X?" — availability for a title. */
+  private async handleTitleAvailability(contentId: string): Promise<AgentResponse> {
+    const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId });
+    this.ctx.setLastTitle(title.contentId);
+    if (!title.availableOnPeacock) {
+      return {
+        text: `${title.title} isn't available on Peacock in this demo.`,
+        card: { kind: "title", data: title },
+        toolName: "get_title_details",
+      };
+    }
+    const preview = title.previewAvailable
+      ? await runTool<PreviewInfo>(this.service, "get_preview", { contentId })
+      : undefined;
+    const connected = this.service.isConnected();
+    const actions: AssistantAction[] = [];
+    if (preview?.previewAvailable) actions.push(this.previewAction(title.contentId));
+    if (connected) actions.push(this.openAction(title.contentId, "Open in Peacock"));
+    else actions.push(this.connectAction(`Open ${title.title} in Peacock`));
+    return {
+      text: `Yes — ${title.title} is available on Peacock.`,
+      card: { kind: "title_offer", data: title, preview },
+      actions,
+      toolName: "get_title_details",
+    };
+  }
+
+  /** "Preview X" / "Can I preview it?" — show the title offer with the preview. */
+  private async handlePreviewTitle(contentId?: string): Promise<AgentResponse> {
+    const id = this.resolveContextTitle(contentId);
+    if (!id)
+      return { text: "Which title would you like to preview? Tell me the name and I'll pull it up." };
+    const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId: id });
+    this.ctx.setLastTitle(title.contentId);
+    const preview = await runTool<PreviewInfo>(this.service, "get_preview", { contentId: id });
+    if (!preview.previewAvailable) {
+      return {
+        text: `There's no preview available for ${title.title} in this demo.`,
+        card: { kind: "title", data: title },
+        toolName: "get_preview",
+      };
+    }
+    const connected = this.service.isConnected();
+    const actions: AssistantAction[] = [this.previewAction(title.contentId)];
+    if (connected) actions.push(this.openAction(title.contentId, "Open in Peacock"));
+    else actions.push(this.connectAction(`Open ${title.title} in Peacock`));
+    return {
+      text: `Here's a preview of ${title.title}. Press play to watch the clip.`,
+      card: { kind: "title_offer", data: title, preview },
+      actions,
+      toolName: "get_preview",
+    };
+  }
+
+  /**
+   * "Open X in Peacock" — the personal playback handoff. Requires a connection;
+   * when disconnected, prompt to connect and resume this exact request after.
+   */
+  private async handleOpenInPeacock(contentId: string | undefined, input: string): Promise<AgentResponse> {
+    const id = this.resolveContextTitle(contentId);
+    if (!id)
+      return { text: "Which title would you like to open in Peacock? Tell me the name and I'll set it up." };
+    const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId: id });
+    this.ctx.setLastTitle(title.contentId);
+    if (!this.service.isConnected())
+      return this.connectPrompt(input);
+    const destination = await runTool<PlaybackDestination>(this.service, "get_playback_destination", {
+      contentId: id,
+    });
+    return {
+      text: `Opening ${title.title} in Peacock. This is a simulated handoff — in a real integration this would launch Peacock playback.`,
+      card: { kind: "handoff", data: title, destination },
+      toolName: "get_playback_destination",
+    };
+  }
+
+  /** "Tell me more about X" / "…about it" — full title details. */
+  private async handleTitleDetails(contentId?: string): Promise<AgentResponse> {
+    const id = this.resolveContextTitle(contentId);
+    if (!id)
+      return { text: "Which title would you like to know more about? Tell me the name and I'll look it up." };
+    const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId: id });
+    this.ctx.setLastTitle(title.contentId);
+    return {
+      text: `Here's more about ${title.title}.`,
+      card: { kind: "title", data: title },
+      toolName: "get_title_details",
+    };
   }
 }

@@ -67,6 +67,35 @@ export const CatalogTitleSchema = z.object({
   rating: z.string(),
   synopsis: z.string(),
   downloadable: z.boolean(),
+  // Discovery / playback-handoff metadata (all simulated, mock-safe). Optional
+  // so existing catalog fixtures remain valid without these fields.
+  availableOnPeacock: z.boolean().optional(),
+  artworkRef: z.string().optional(),
+  previewAvailable: z.boolean().optional(),
+  playbackAvailable: z.boolean().optional(),
+});
+
+// Simulated, prototype-safe preview capability for a title. Never references a
+// real production media URL — only a mock source/identifier.
+export const PreviewTypeSchema = z.enum(["clip", "trailer"]);
+export const PreviewInfoSchema = z.object({
+  contentId: z.string(),
+  previewAvailable: z.boolean(),
+  previewType: PreviewTypeSchema.nullable(),
+  durationSeconds: z.number(),
+  /** Mock preview source or preview identifier (no real Peacock media URL). */
+  previewSource: z.string().nullable(),
+});
+
+// Simulated playback handoff destination for a title.
+export const PlaybackDestinationSchema = z.object({
+  contentId: z.string(),
+  destination: z.literal("Peacock"),
+  /** Whether an active Peacock connection/account context is required. */
+  connectionRequired: z.boolean(),
+  /** Mock deep-link/destination for the prototype (not a real production link). */
+  destinationUrl: z.string(),
+  actionLabel: z.string(),
 });
 
 export const WatchHistoryEntrySchema = z.object({

@@ -8,14 +8,17 @@ export function ChatWindow({
   messages,
   pending,
   debug,
+  previewOpenIds,
   onSend,
   onAction,
 }: {
   messages: ChatMessage[];
   pending: boolean;
   debug: boolean;
+  /** Message ids whose inline title-offer preview is currently shown. */
+  previewOpenIds: ReadonlySet<string>;
   onSend: (text: string) => void;
-  onAction: (action: AssistantAction) => void;
+  onAction: (action: AssistantAction, messageId: string) => void;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -43,7 +46,13 @@ export function ChatWindow({
       ) : (
         <div className="chat" role="log" aria-live="polite" aria-label="Conversation">
           {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} debug={debug} onAction={onAction} />
+            <MessageBubble
+              key={m.id}
+              message={m}
+              debug={debug}
+              previewOpen={previewOpenIds.has(m.id)}
+              onAction={onAction}
+            />
           ))}
 
           {pending && (

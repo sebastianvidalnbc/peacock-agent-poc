@@ -6,6 +6,8 @@ import type {
   CatalogTitle,
   Entitlements,
   PlanChangePreview,
+  PlaybackDestination,
+  PreviewInfo,
   Subscription,
 } from "./types";
 
@@ -32,6 +34,8 @@ export interface PeacockService {
   getSupportedCapabilities(): Promise<Capability[]>;
   searchCatalog(query: string): Promise<CatalogTitle[]>;
   getTitleDetails(contentId: string): Promise<CatalogTitle>;
+  getPreview(contentId: string): Promise<PreviewInfo>;
+  getPlaybackDestination(contentId: string): Promise<PlaybackDestination>;
 
   // Mutating, personal
   addToWatchlist(contentId: string): Promise<CatalogTitle[]>;

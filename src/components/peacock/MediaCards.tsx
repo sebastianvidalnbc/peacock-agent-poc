@@ -1,4 +1,9 @@
-import type { CatalogTitle } from "../../peacock/types";
+import { useEffect, useRef, useState } from "react";
+import type {
+  CatalogTitle,
+  PlaybackDestination,
+  PreviewInfo,
+} from "../../peacock/types";
 import { CardShell } from "./CardShell";
 
 function TitleRow({ t }: { t: CatalogTitle }) {
@@ -59,6 +64,144 @@ export function TitleCard({ title }: { title: CatalogTitle }) {
       <p style={{ margin: "6px 0 0" }}>{title.synopsis}</p>
       <p className="meta">
         {title.type === "series" ? "Series" : "Film"} · {title.year} · {title.rating}
+      </p>
+    </CardShell>
+  );
+}
+
+function formatTime(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  return `${mm}:${ss.toString().padStart(2, "0")}`;
+}
+
+/**
+ * A simulated, prototype-safe preview player. It never streams a real asset —
+ * it renders a poster derived from the title and animates a timeline over the
+ * preview's mock duration so the discovery flow feels tangible.
+ */
+export function PreviewPlayer({ title, preview }: { title: CatalogTitle; preview: PreviewInfo }) {
+  const duration = Math.max(1, preview.durationSeconds);
+  const [playing, setPlaying] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const raf = useRef<number | null>(null);
+  const last = useRef<number>(0);
+
+  useEffect(() => {
+    if (!playing) return;
+    last.current = performance.now();
+    const tick = (now: number) => {
+      const dt = (now - last.current) / 1000;
+      last.current = now;
+      setElapsed((e) => {
+        const next = e + dt;
+        if (next >= duration) {
+          setPlaying(false);
+          return duration;
+        }
+        return next;
+      });
+      raf.current = requestAnimationFrame(tick);
+    };
+    raf.current = requestAnimationFrame(tick);
+    return () => {
+      if (raf.current !== null) cancelAnimationFrame(raf.current);
+    };
+  }, [playing, duration]);
+
+  function toggle() {
+    if (!playing && elapsed >= duration) setElapsed(0);
+    setPlaying((p) => !p);
+  }
+
+  const pct = Math.min(100, (elapsed / duration) * 100);
+  const label = preview.previewType === "trailer" ? "Trailer" : "Preview";
+
+  return (
+    <div className="preview-player">
+      <div className="preview-stage" data-artwork={title.artworkRef ?? ""}>
+        <span className="preview-poster-title">{title.title}</span>
+        <span className="preview-badge">{label} · simulated</span>
+      </div>
+      <div className="preview-controls">
+        <button
+          type="button"
+          className="preview-play"
+          onClick={toggle}
+          aria-label={playing ? `Pause ${label.toLowerCase()} of ${title.title}` : `Play ${label.toLowerCase()} of ${title.title}`}
+          aria-pressed={playing}
+        >
+          {playing ? "❚❚" : "►"}
+        </button>
+        <div
+          className="preview-timeline"
+          role="progressbar"
+          aria-label={`${label} progress`}
+          aria-valuemin={0}
+          aria-valuemax={duration}
+          aria-valuenow={Math.floor(elapsed)}
+        >
+          <span className="preview-fill" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="preview-time">
+          {formatTime(elapsed)} / {formatTime(duration)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A content-discovery offer for a title: availability, synopsis, and (when the
+ * user has opted in) an inline simulated preview player. Action buttons live in
+ * the message action row; `previewOpen` reflects whether preview was requested.
+ */
+export function TitleOfferCard({
+  title,
+  preview,
+  previewOpen,
+}: {
+  title: CatalogTitle;
+  preview?: PreviewInfo;
+  previewOpen: boolean;
+}) {
+  return (
+    <CardShell title={title.title}>
+      <div className="chips">
+        <span className="chip">On Peacock</span>
+        {title.genres.slice(0, 2).map((g) => (
+          <span className="chip" key={g}>
+            {g}
+          </span>
+        ))}
+      </div>
+      <p style={{ margin: "6px 0 0" }}>{title.synopsis}</p>
+      <p className="meta">
+        {title.type === "series" ? "Series" : "Film"} · {title.year} · {title.rating}
+      </p>
+      {previewOpen && preview?.previewAvailable && (
+        <PreviewPlayer title={title} preview={preview} />
+      )}
+    </CardShell>
+  );
+}
+
+/** A confirmed Peacock playback handoff for a title (simulated deep link). */
+export function HandoffCard({
+  title,
+  destination,
+}: {
+  title: CatalogTitle;
+  destination: PlaybackDestination;
+}) {
+  return (
+    <CardShell title={`Opening ${title.title}`}>
+      <p style={{ margin: 0 }}>
+        Handing off to {destination.destination} to start playback.
+      </p>
+      <p className="meta" style={{ margin: "6px 0 0" }}>
+        Simulated destination: {destination.destinationUrl}
       </p>
     </CardShell>
   );

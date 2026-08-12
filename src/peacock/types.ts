@@ -11,6 +11,9 @@ import type {
   PlanChangePreviewSchema,
   PlanSchema,
   PlanTierSchema,
+  PlaybackDestinationSchema,
+  PreviewInfoSchema,
+  PreviewTypeSchema,
   SubscriptionSchema,
   SubscriptionStatusSchema,
   TitleTypeSchema,
@@ -39,6 +42,9 @@ export type AccountSummary = z.infer<typeof AccountSummarySchema>;
 export type CatalogTitle = z.infer<typeof CatalogTitleSchema>;
 export type WatchHistoryEntry = z.infer<typeof WatchHistoryEntrySchema>;
 export type Capability = z.infer<typeof CapabilitySchema>;
+export type PreviewType = z.infer<typeof PreviewTypeSchema>;
+export type PreviewInfo = z.infer<typeof PreviewInfoSchema>;
+export type PlaybackDestination = z.infer<typeof PlaybackDestinationSchema>;
 
 export type PlanChangePreview = z.infer<typeof PlanChangePreviewSchema>;
 export type CancellationPreview = z.infer<typeof CancellationPreviewSchema>;

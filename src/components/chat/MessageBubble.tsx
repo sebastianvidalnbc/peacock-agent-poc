@@ -4,11 +4,14 @@ import { PeacockCard } from "../peacock/PeacockCard";
 export function MessageBubble({
   message,
   debug,
+  previewOpen = false,
   onAction,
 }: {
   message: ChatMessage;
   debug: boolean;
-  onAction: (action: AssistantAction) => void;
+  /** Whether the inline preview for this message's title_offer card is shown. */
+  previewOpen?: boolean;
+  onAction: (action: AssistantAction, messageId: string) => void;
 }) {
   const isUser = message.role === "user";
   return (
@@ -16,11 +19,11 @@ export function MessageBubble({
       {!isUser && <div className="avatar" aria-hidden="true" />}
       <div className="col">
         <div className={isUser ? "bubble" : "prose"}>{message.text}</div>
-        {message.card && <PeacockCard card={message.card} />}
+        {message.card && <PeacockCard card={message.card} previewOpen={previewOpen} />}
         {message.actions && message.actions.length > 0 && (
           <div className="actions">
             {message.actions.map((a) => (
-              <button key={a.id} className="btn primary" onClick={() => onAction(a)}>
+              <button key={a.id} className="btn primary" onClick={() => onAction(a, message.id)}>
                 {a.label}
               </button>
             ))}
