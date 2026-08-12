@@ -102,8 +102,12 @@ button { font: inherit; cursor: pointer; }
 .composer-field .send { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; font-size: 17px; line-height: 1; display: grid; place-items: center; }
 .composer-field .send:disabled { background: var(--panel); color: var(--muted); cursor: default; }
 
-.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 16px; z-index: 20; }
-.dialog { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 18px; width: min(480px, 100%); }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 16px; z-index: 20; overflow: auto; }
+.dialog { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; width: min(480px, 100%); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; overflow: hidden; }
+.dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 18px 18px 12px; border-bottom: 1px solid var(--border); background: var(--panel); }
+.dialog-header h2 { margin: 0; }
+.dialog-close { flex: none; font-size: 22px; line-height: 1; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; }
+.dialog-body { padding: 14px 18px 18px; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
 .dialog h2 { margin: 0 0 4px; }
 .dialog p.note { color: var(--muted); margin: 0 0 14px; font-size: 13px; }
 .persona { display: flex; justify-content: space-between; gap: 10px; align-items: center; width: 100%; text-align: left; margin-bottom: 8px; padding: 12px; border-radius: 12px; }
@@ -112,6 +116,9 @@ button { font: inherit; cursor: pointer; }
 .persona.selected { border-color: var(--accent); }
 .dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
 .settings-list { display: flex; flex-direction: column; gap: 10px; }
+.btn.action { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; text-align: left; padding: 12px; }
+.btn.action .name { font-weight: 600; }
+.btn.action .blurb { color: var(--muted); font-size: 13px; font-weight: 400; }
 .settings-section { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px; }
 .settings-section:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
 .settings-section h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }

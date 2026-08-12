@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePrototypeStore } from "../state/usePrototypeStore";
 import { prototypeStore } from "../state/prototype-store";
 import { mockPeacockService } from "../peacock/MockPeacockService";
@@ -33,6 +33,18 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [debug, setDebug] = useState(false);
   const pendingResume = useRef<string | null>(null);
+
+  // Lock the background from scrolling while any modal dialog is open, so the
+  // page behind the backdrop stays fixed and only the dialog body scrolls.
+  const modalOpen = settingsOpen || authOpen;
+  useEffect(() => {
+    if (!modalOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [modalOpen]);
 
   async function handleSend(text: string) {
     const trimmed = text.trim();
