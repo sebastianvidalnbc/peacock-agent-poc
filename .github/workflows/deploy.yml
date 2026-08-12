@@ -1,0 +1,44 @@
+# OPTIONAL / MANUAL: GitHub Actions deploy to GitHub Pages.
+# Disabled during private development — runs only via manual workflow_dispatch.
+# Requires Actions + Pages to be enabled before it can succeed.
+name: Deploy to GitHub Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run build
+        # Default base "/peacock-agent-poc/" is fine when the repo is named
+        # peacock-agent-poc. Otherwise set: GH_PAGES_BASE: /<repo-name>/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
