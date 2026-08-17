@@ -1,18 +1,36 @@
 import type { ReactNode } from "react";
 import type { SubscriptionStatus } from "../../peacock/types";
 
-/** Peacock-sourced card frame. A source eyebrow attributes the data to Peacock. */
-export function CardShell({ title, children }: { title: string; children: ReactNode }) {
+/** Small Peacock source mark — brand colour appears only inside artifacts. */
+export function PeacockMark() {
+  return <span className="peacock-mark" aria-hidden="true" />;
+}
+
+/**
+ * Peacock-sourced artifact frame — an app/tool result embedded in the chat. A
+ * quiet source row attributes the data to Peacock; an optional footer exposes
+ * the primary next action for the artifact.
+ */
+export function CardShell({
+  title,
+  children,
+  footer,
+}: {
+  title: string;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
   return (
-    <section className="card" aria-label={`${title} (from Peacock)`}>
+    <section className="card" aria-label={`${title} — from Peacock`}>
       <header className="card-top">
-        <span className="stripe" aria-hidden="true" />
-        <div className="card-heading">
-          <span className="card-source">Peacock</span>
-          <span className="card-title">{title}</span>
-        </div>
+        <PeacockMark />
+        <span className="card-source">Peacock</span>
       </header>
-      <div className="card-body">{children}</div>
+      <div className="card-body">
+        <h3 className="card-title">{title}</h3>
+        {children}
+      </div>
+      {footer && <footer className="card-foot">{footer}</footer>}
     </section>
   );
 }

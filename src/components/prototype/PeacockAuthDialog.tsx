@@ -1,7 +1,13 @@
+import { useEffect, useRef } from "react";
+import { PeacockMark } from "../peacock/CardShell";
+
 /**
- * Simulated, product-level Peacock authorization. No real username, password,
- * MFA, or payment details are ever requested. Continuing connects the default
- * demo persona (handled by the caller) so the original request can resume.
+ * Simulated Peacock authorization presented as a mobile app-authorization
+ * sheet rather than a developer modal. No real username, password, MFA, or
+ * payment details are ever requested. Continuing connects the default demo
+ * persona (handled by the caller) so the original request can resume. Demo
+ * persona selection is never exposed here — it lives only in Prototype
+ * Settings.
  */
 const GRANTS = [
   "View your Peacock account",
@@ -19,20 +25,46 @@ export function PeacockAuthDialog({
   onContinue: () => void;
   onCancel: () => void;
 }) {
+  const continueRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    continueRef.current?.focus();
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onCancel();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      restoreFocusRef.current?.focus?.();
+    };
+  }, [open, onCancel]);
+
   if (!open) return null;
   return (
-    <div className="overlay" role="presentation" onClick={onCancel}>
+    <div className="overlay sheet-overlay" role="presentation" onClick={onCancel}>
       <div
-        className="dialog"
+        className="sheet"
         role="dialog"
         aria-modal="true"
         aria-labelledby="peacock-auth-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="dialog-body">
-          <span className="card-source">Peacock</span>
-          <h2 id="peacock-auth-title">Connect Peacock to your AI assistant</h2>
-          <p className="note">This will allow the assistant to:</p>
+        <div className="sheet-grabber" aria-hidden="true" />
+        <div className="sheet-body">
+          <div className="auth-brand">
+            <PeacockMark />
+            <span className="card-source">Peacock</span>
+          </div>
+          <h2 id="peacock-auth-title">Connect Peacock</h2>
+          <p className="note">
+            Let your AI assistant use your Peacock account to:
+          </p>
           <ul className="grants">
             {GRANTS.map((g) => (
               <li key={g}>{g}</li>
@@ -41,12 +73,12 @@ export function PeacockAuthDialog({
           <p className="note">
             Simulated connection — no username, password, MFA, or payment details are requested.
           </p>
-          <div className="row">
-            <button className="btn ghost" onClick={onCancel}>
-              Cancel
+          <div className="sheet-actions">
+            <button className="btn primary block" onClick={onContinue} ref={continueRef}>
+              Connect Peacock
             </button>
-            <button className="btn primary" onClick={onContinue} autoFocus>
-              Continue
+            <button className="btn ghost block" onClick={onCancel}>
+              Not now
             </button>
           </div>
         </div>

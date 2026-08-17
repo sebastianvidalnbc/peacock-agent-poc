@@ -79,19 +79,19 @@ export function SettingsPanel({
 
   if (!open) return null;
   return (
-    <div className="overlay" role="presentation" onClick={onClose}>
+    <div className="overlay sheet-overlay" role="presentation" onClick={onClose}>
       <div
-        className="dialog"
+        className="sheet settings-sheet"
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
         ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="dialog-header">
+        <div className="sheet-header">
           <h2 id="settings-title">Prototype settings</h2>
           <button
-            className="iconbtn ghost dialog-close"
+            className="iconbtn dialog-close"
             aria-label="Close prototype settings"
             onClick={onClose}
             ref={closeRef}
@@ -100,7 +100,7 @@ export function SettingsPanel({
           </button>
         </div>
 
-        <div className="dialog-body">
+        <div className="sheet-body">
           <section className="settings-section">
             <h3>Demo account</h3>
             <p className="note">

@@ -31,7 +31,7 @@ export function SubscriptionCard({ data }: { data: Subscription }) {
       <KV k="Status" v={<StatusBadge status={data.status} />} />
       <KV k="Renews" v={data.renewsOn ?? "—"} />
       {data.managedExternally && (
-        <p className="meta" style={{ margin: 0 }}>
+        <p className="meta">
           Managed externally — changes are made in the billing provider's settings.
         </p>
       )}

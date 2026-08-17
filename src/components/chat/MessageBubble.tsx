@@ -16,21 +16,27 @@ export function MessageBubble({
   const isUser = message.role === "user";
   return (
     <div className={`msg ${isUser ? "user" : "assistant"}`}>
-      {!isUser && <div className="avatar" aria-hidden="true" />}
       <div className="col">
-        <div className={isUser ? "bubble" : "prose"}>{message.text}</div>
+        {message.text && <div className={isUser ? "bubble" : "prose"}>{message.text}</div>}
         {message.card && <PeacockCard card={message.card} previewOpen={previewOpen} />}
         {message.actions && message.actions.length > 0 && (
           <div className="actions">
-            {message.actions.map((a) => (
-              <button key={a.id} className="btn primary" onClick={() => onAction(a, message.id)}>
+            {message.actions.map((a, i) => (
+              <button
+                key={a.id}
+                className={`btn ${i === 0 ? "primary" : "ghost"}`}
+                onClick={() => onAction(a, message.id)}
+              >
                 {a.label}
               </button>
             ))}
           </div>
         )}
         {debug && message.toolName && (
-          <div className="tool-chip">Peacock · {message.toolName} · Completed</div>
+          <div className="tool-chip" aria-label="Tool activity">
+            <span className="tool-dot" aria-hidden="true" />
+            Peacock · {message.toolName} · Completed
+          </div>
         )}
       </div>
     </div>

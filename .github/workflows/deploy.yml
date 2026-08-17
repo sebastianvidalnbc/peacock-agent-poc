@@ -1,9 +1,14 @@
-# OPTIONAL / MANUAL: GitHub Actions deploy to GitHub Pages.
-# Disabled during private development — runs only via manual workflow_dispatch.
-# Requires Actions + Pages to be enabled before it can succeed.
+# Automatic GitHub Pages deployment.
+# Every push to main builds and deploys the prototype; workflow_dispatch allows
+# manual reruns. The repository root is the application root — package.json,
+# package-lock.json, and the Vite dist/ output all live at the repo root, so no
+# working-directory override is needed.
 name: Deploy to GitHub Pages
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -26,9 +31,10 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      - run: npm test
       - run: npm run build
-        # Default base "/peacock-agent-poc/" is fine when the repo is named
-        # peacock-agent-poc. Otherwise set: GH_PAGES_BASE: /<repo-name>/
+        # Default base "/peacock-agent-poc/" is correct because the repo is
+        # named peacock-agent-poc. Otherwise set: GH_PAGES_BASE: /<repo-name>/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

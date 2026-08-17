@@ -120,6 +120,17 @@ export function App() {
     if (resume) void handleSend(resume);
   }
 
+  // The composer's "+" tools menu surfaces Peacock as one connected capability.
+  // When disconnected it starts the simulated authorization; when already
+  // connected it opens Prototype Settings to manage the demo account.
+  function handlePeacockTool() {
+    if (connectedPersonaId) setSettingsOpen(true);
+    else {
+      pendingResume.current = null;
+      setAuthOpen(true);
+    }
+  }
+
   function resetConversation() {
     setMessages([]);
     setPreviewOpenIds(new Set());
@@ -128,14 +139,19 @@ export function App() {
 
   return (
     <div className="app">
-      <AppBar onOpenSettings={() => setSettingsOpen(true)} />
+      <AppBar
+        onOpenSettings={() => setSettingsOpen(true)}
+        onNewChat={resetConversation}
+      />
       <ChatWindow
         messages={messages}
         pending={pending}
         debug={debug}
         previewOpenIds={previewOpenIds}
+        peacockConnected={connectedPersonaId !== null}
         onSend={handleSend}
         onAction={handleAction}
+        onPeacockTool={handlePeacockTool}
       />
       <PeacockAuthDialog
         open={authOpen}
