@@ -17,8 +17,14 @@ export type Intent =
   | { kind: "get_subscription" }
   /** "I want to watch X" — offer the title with preview + connect/open. */
   | { kind: "watch_title"; contentId: string }
-  /** "Is X on Peacock?" / "Where can I watch X?" — availability for a title. */
+  /** "Is X on Peacock?" — Peacock-specific availability for a title. */
   | { kind: "title_availability"; contentId: string }
+  /** "Where can I watch X?" — cross-service availability for a title. */
+  | { kind: "where_to_watch"; contentId?: string }
+  /** "Find <something> across services" — cross-service discovery search. */
+  | { kind: "discover"; query: string }
+  /** "Which of these do I already have?" — resolved from last discovery. */
+  | { kind: "which_do_i_have" }
   /** "Preview X" or, via context, "Can I preview it?". */
   | { kind: "preview_title"; contentId?: string }
   /** "Open X in Peacock" or, via context, "Open it in Peacock". */
@@ -129,6 +135,15 @@ export function routeIntent(input: string): Intent {
   )
     return { kind: "capabilities" };
 
+  // "Which of these do I (already) have / can I watch with my account?" — a
+  // follow-up on the previous cross-service discovery result. Checked early so
+  // it isn't captured by the subscription/entitlements keyword rules.
+  if (
+    /\bwhich\b/.test(t) &&
+    /\b(of (these|them|those)|do i (already )?(have|own)|already have|can i watch)\b/.test(t)
+  )
+    return { kind: "which_do_i_have" };
+
   // --- Title-oriented intents (content discovery + Peacock playback handoff) ---
   // A concrete title named in the text takes precedence for these verbs; some
   // follow-ups ("open it", "preview it") refer to the current title by pronoun
@@ -199,12 +214,19 @@ export function routeIntent(input: string): Intent {
   // Placed after account/subscription/watchlist rules so those still win for
   // management phrasings (e.g. "add X to my watchlist").
   if (named) {
-    // "Is X on Peacock?" / "Where can I watch X?" — availability question.
-    if (
-      /\b(is|are|where|can i|how (do|can) i)\b/.test(t) &&
-      has(t, ["on peacock", "available", "where can", "where do", "where to", "how do i watch", "how can i watch"])
-    )
+    // A cross-service availability question ("where can I watch X?", "what
+    // services have X?", "how can I watch X?") that does NOT single out Peacock
+    // → provider-neutral where-to-watch. Placed before the Peacock-specific
+    // rule so a generic ask isn't answered as if Peacock were the only option.
+    const asksAvailability =
+      /\b(is|are|where|can i|how (do|can) i|what (service|services|platform|platforms))\b/.test(t) &&
+      has(t, ["on peacock", "available", "where can", "where do", "where to", "where else", "how do i watch", "how can i watch", "what service", "what services", "what platform", "streaming", "stream it"]);
+    const mentionsPeacock = /\bpeacock\b/.test(t);
+    if (asksAvailability && mentionsPeacock)
+      // "Is X on Peacock?" — Peacock-specific availability question.
       return { kind: "title_availability", contentId: named.contentId };
+    if (asksAvailability)
+      return { kind: "where_to_watch", contentId: named.contentId };
     // Explicit catalog-lookup verbs keep their existing search behaviour so a
     // named title doesn't hijack "find X" / "search for X".
     const isSearchPhrasing = has(t, ["find", "search", "look for", "pull up", "is there"]);
@@ -224,10 +246,26 @@ export function routeIntent(input: string): Intent {
     return { kind: "open_in_peacock" };
   if (/\b(tell me more|more (info|information|details)|more about|what's it about|whats it about)\b/.test(t) && refersByPronoun(t))
     return { kind: "title_details" };
+  // "Where else can I watch it?" / "What services have it?" — cross-service
+  // availability for the current title (resolved from context by the agent).
+  if (
+    refersByPronoun(t) &&
+    !/\bpeacock\b/.test(t) &&
+    has(t, ["where can", "where else", "where to", "what service", "what services", "what platform", "how can i watch", "how do i watch"])
+  )
+    return { kind: "where_to_watch" };
 
   // Open-ended discovery → recommendation intent (not a literal search).
   if (isRecommendationAsk(t))
     return { kind: "recommend", criteria: detectGenre(t) };
+
+  // Explicit cross-service discovery ("find X across services / anywhere / on
+  // any service", "what can I stream everywhere") → provider-neutral search.
+  if (
+    has(t, ["find", "search", "look for", "show me", "pull up", "what can i stream", "what can i watch"]) &&
+    has(t, ["across services", "across all services", "any service", "all services", "anywhere", "everywhere", "every service", "which services", "what services", "streaming services"])
+  )
+    return { kind: "discover", query: extractSearchQuery(input) };
 
   // Explicit catalog lookups with an extractable term.
   if (has(t, ["find", "search", "look for", "show me", "pull up", "is there"]))

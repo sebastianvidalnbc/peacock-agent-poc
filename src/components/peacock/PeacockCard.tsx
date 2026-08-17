@@ -13,6 +13,7 @@ import {
   TitleOfferCard,
   WatchlistCard,
 } from "./MediaCards";
+import { DiscoveryCard, WhereToWatchCard } from "./DiscoveryCards";
 
 /** Renders the structured Peacock card attached to an assistant message. */
 export function PeacockCard({
@@ -42,6 +43,16 @@ export function PeacockCard({
       return <TitleOfferCard title={card.data} preview={card.preview} previewOpen={previewOpen} />;
     case "handoff":
       return <HandoffCard title={card.data} destination={card.destination} />;
+    case "where_to_watch":
+      return (
+        <WhereToWatchCard
+          data={card.data}
+          ownedOnPeacock={card.ownedOnPeacock}
+          connected={card.connected}
+        />
+      );
+    case "discovery":
+      return <DiscoveryCard rows={card.rows} connected={card.connected} />;
     case "connect":
       return <ConnectCard />;
     default:

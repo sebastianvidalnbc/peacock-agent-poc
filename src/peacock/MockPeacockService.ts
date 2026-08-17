@@ -7,6 +7,7 @@ import {
   type CancellationPreview,
   type Capability,
   type CatalogTitle,
+  type TitleAvailability,
   type Entitlements,
   type PlanChangePreview,
   type PlaybackDestination,
@@ -113,7 +114,7 @@ export class MockPeacockService implements PeacockService {
     return this.store
       .getOverlay(id)
       .watchlist.map((cid) => findTitleById(cid))
-      .filter((t): t is CatalogTitle => Boolean(t));
+      .filter((t): t is TitleAvailability => Boolean(t));
   }
 
   async addToWatchlist(contentId: string): Promise<CatalogTitle[]> {

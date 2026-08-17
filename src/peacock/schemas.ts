@@ -75,6 +75,48 @@ export const CatalogTitleSchema = z.object({
   playbackAvailable: z.boolean().optional(),
 });
 
+/**
+ * Cross-service discovery schemas (Phase 2B). Provider-neutral and fully
+ * simulated: no real availability API, brand asset, or deep link is modelled.
+ * "peacock" is one provider among several — the assistant only treats it as
+ * "owned" when the user's account context (connection + entitlement) justifies
+ * it, never by default.
+ */
+export const StreamingProviderSchema = z.enum([
+  "peacock",
+  "netflix",
+  "hulu",
+  "max",
+  "disney_plus",
+  "prime_video",
+  "apple_tv_plus",
+]);
+
+export const OfferTypeSchema = z.enum(["subscription", "free_ads", "rent", "buy"]);
+
+export const AvailabilitySchema = z.object({
+  provider: StreamingProviderSchema,
+  offerType: OfferTypeSchema,
+  /** Simulated maximum quality for this offer (label only). */
+  quality: VideoQualitySchema.optional(),
+  /** Simulated price label for rent/buy offers (e.g. "$3.99"). */
+  priceLabel: z.string().optional(),
+  /** Mock deep-link/destination for the prototype (not a real link). */
+  deepLinkRef: z.string(),
+});
+
+/** A catalog title enriched with cross-service availability rows. */
+export const TitleAvailabilitySchema = CatalogTitleSchema.extend({
+  availability: z.array(AvailabilitySchema),
+});
+
+export const TitleAvailabilityListSchema = z.array(TitleAvailabilitySchema);
+
+/** Criteria for a provider-neutral recommendation request. */
+export const RecommendCriteriaInputSchema = z.object({
+  genre: z.string().optional(),
+});
+
 // Simulated, prototype-safe preview capability for a title. Never references a
 // real production media URL — only a mock source/identifier.
 export const PreviewTypeSchema = z.enum(["clip", "trailer"]);

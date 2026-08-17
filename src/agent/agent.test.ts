@@ -217,3 +217,81 @@ describe("Content discovery + Peacock playback handoff", () => {
     expect(res.toolName).toBe("add_to_watchlist");
   });
 });
+
+describe("Cross-service discovery (Phase 2B)", () => {
+  beforeEach(() => {
+    prototypeStore.clearAll();
+  });
+
+  it("answers 'Where can I watch X?' with a neutral cross-service card, not a Peacock offer", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("Where can I watch Neon Alley?");
+    expect(res.card?.kind).toBe("where_to_watch");
+    expect(res.toolName).toBe("get_where_to_watch");
+    const providers =
+      res.card?.kind === "where_to_watch" ? res.card.data.availability.map((a) => a.provider) : [];
+    expect(providers).toContain("netflix");
+    // Neon Alley is not on Peacock, so nothing is marked owned.
+    if (res.card?.kind === "where_to_watch") expect(res.card.ownedOnPeacock).toBe(false);
+  });
+
+  it("keeps 'Is X on Peacock?' as the Peacock-specific offer (not cross-service)", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("Is Signal Lost on Peacock?");
+    expect(res.card?.kind).toBe("title_offer");
+    expect(res.text.toLowerCase()).toContain("available on peacock");
+  });
+
+  it("marks the Peacock row owned only when connected", async () => {
+    const off = disconnectedAgent();
+    const r1 = await off.respond("Where can I watch Signal Lost?");
+    expect(r1.card?.kind).toBe("where_to_watch");
+    if (r1.card?.kind === "where_to_watch") expect(r1.card.ownedOnPeacock).toBe(false);
+
+    const on = connectedAgent();
+    const r2 = await on.respond("Where can I watch Signal Lost?");
+    // Signal Lost is on Peacock; a connected account already covers it.
+    if (r2.card?.kind === "where_to_watch") expect(r2.card.ownedOnPeacock).toBe(true);
+  });
+
+  it("routes an explicit cross-service search to a discovery card", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("Find drama across all services");
+    expect(res.toolName).toBe("search_across_services");
+    expect(res.card?.kind).toBe("discovery");
+    const rows = res.card?.kind === "discovery" ? res.card.rows : [];
+    expect(rows.length).toBeGreaterThan(0);
+  });
+
+  it("answers 'which of these do I already have?' by intersecting with the connected account", async () => {
+    const agent = connectedAgent();
+    await agent.respond("Find drama across all services");
+    const res = await agent.respond("Which of these do I already have?");
+    expect(res.card?.kind).toBe("discovery");
+    const rows = res.card?.kind === "discovery" ? res.card.rows : [];
+    // Any owned row must genuinely be a Peacock title.
+    for (const r of rows) {
+      if (r.ownedOnPeacock)
+        expect(r.title.availability.some((a) => a.provider === "peacock")).toBe(true);
+    }
+  });
+
+  it("prompts to connect for 'which do I have?' when disconnected", async () => {
+    const agent = disconnectedAgent();
+    await agent.respond("Find drama across all services");
+    const res = await agent.respond("Which of these do I already have?");
+    const kinds = (res.actions ?? []).map((a) => a.kind);
+    expect(kinds).toContain("connect");
+    // Nothing is owned while disconnected.
+    const rows = res.card?.kind === "discovery" ? res.card.rows : [];
+    expect(rows.every((r) => !r.ownedOnPeacock)).toBe(true);
+  });
+
+  it("resolves 'where else can I watch it?' from conversation context", async () => {
+    const agent = connectedAgent();
+    await agent.respond("I want to watch Signal Lost");
+    const res = await agent.respond("Where else can I watch it?");
+    expect(res.card?.kind).toBe("where_to_watch");
+    if (res.card?.kind === "where_to_watch") expect(res.card.data.title).toBe("Signal Lost");
+  });
+});

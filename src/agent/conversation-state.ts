@@ -7,6 +7,7 @@ export class ConversationState {
   private lastTitleId: string | null = null;
   private lastIntentKind: string | null = null;
   private awaitingRecommendCriteria = false;
+  private lastDiscoveryIds: string[] = [];
 
   setLastTitle(contentId: string | null): void {
     this.lastTitleId = contentId;
@@ -14,6 +15,19 @@ export class ConversationState {
 
   getLastTitle(): string | null {
     return this.lastTitleId;
+  }
+
+  /**
+   * Remember the titles from the last cross-service discovery result so a
+   * follow-up such as "which of these do I already have?" can resolve against
+   * them without re-running the search.
+   */
+  setLastDiscovery(contentIds: string[]): void {
+    this.lastDiscoveryIds = [...contentIds];
+  }
+
+  getLastDiscovery(): string[] {
+    return this.lastDiscoveryIds;
   }
 
   setLastIntent(kind: string): void {
@@ -40,5 +54,6 @@ export class ConversationState {
     this.lastTitleId = null;
     this.lastIntentKind = null;
     this.awaitingRecommendCriteria = false;
+    this.lastDiscoveryIds = [];
   }
 }

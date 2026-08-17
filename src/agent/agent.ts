@@ -1,5 +1,7 @@
 import type { PeacockService } from "../peacock/PeacockService";
-import { runTool } from "../tools";
+import type { DiscoveryService } from "../discovery/DiscoveryService";
+import { mockDiscoveryService } from "../discovery/MockDiscoveryService";
+import { runTool, type ServiceContext } from "../tools";
 import { routeIntent, detectGenre, type Intent } from "./intent-router";
 import { ConversationState } from "./conversation-state";
 import { COMMERCE_DISCLAIMER, UNSUPPORTED_MESSAGE } from "./capabilities";
@@ -13,8 +15,9 @@ import type {
   PlaybackDestination,
   PreviewInfo,
   Subscription,
+  TitleAvailability,
 } from "../peacock/types";
-import type { AgentResponse, AssistantAction } from "./types";
+import type { AgentResponse, AssistantAction, DiscoveryRow } from "./types";
 
 const ADS: Record<string, string> = {
   ads: "ad-supported streaming",
@@ -28,11 +31,24 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Phase 1 conversational simulator: intent → tool → structured reply. */
 export class Agent {
+  private discovery: DiscoveryService;
+
   constructor(
     private service: PeacockService,
     public ctx: ConversationState = new ConversationState(),
     private delayMs = 300,
-  ) {}
+    discovery: DiscoveryService = mockDiscoveryService,
+  ) {
+    this.discovery = discovery;
+  }
+
+  /**
+   * The full backend context passed to the tool layer. Peacock tools run against
+   * the account-aware service; discovery tools against the provider-neutral one.
+   */
+  private get svc(): ServiceContext {
+    return { peacock: this.service, discovery: this.discovery };
+  }
 
   async respond(input: string): Promise<AgentResponse> {
     const intent = this.resolveIntent(input);
@@ -173,6 +189,12 @@ export class Agent {
         return this.handleWatchTitle(intent.contentId);
       case "title_availability":
         return this.handleTitleAvailability(intent.contentId);
+      case "where_to_watch":
+        return this.handleWhereToWatch(intent.contentId);
+      case "discover":
+        return this.handleDiscover(intent.query.trim());
+      case "which_do_i_have":
+        return this.handleWhichDoIHave();
       case "preview_title":
         return this.handlePreviewTitle(intent.contentId);
       case "open_in_peacock":
@@ -334,6 +356,131 @@ export class Agent {
       card: { kind: "title_offer", data: title, preview },
       actions,
       toolName: "get_title_details",
+    };
+  }
+
+  /**
+   * True when a title carries a Peacock availability row. This is a purely
+   * provider-neutral fact about the title (does Peacock offer it?), independent
+   * of whether the user is connected.
+   */
+  private isOnPeacock(title: TitleAvailability): boolean {
+    return title.availability.some((a) => a.provider === "peacock");
+  }
+
+  /**
+   * "Which of these do I already have?" is the only place ownership is inferred,
+   * and only for Peacock: a title counts as owned when the account is connected
+   * AND Peacock offers the title. Other providers are never treated as owned.
+   */
+  private ownedOnPeacock(title: TitleAvailability): boolean {
+    return this.service.isConnected() && this.isOnPeacock(title);
+  }
+
+  private toRow(title: TitleAvailability): DiscoveryRow {
+    return { title, ownedOnPeacock: this.ownedOnPeacock(title) };
+  }
+
+  /**
+   * "Where can I watch X?" — provider-neutral, cross-service availability for a
+   * single title. Peacock is one provider among several; it is only highlighted
+   * as already-covered when the account is connected. Resolves the title from
+   * context when the request refers to it by pronoun.
+   */
+  private async handleWhereToWatch(contentId?: string): Promise<AgentResponse> {
+    const id = this.resolveContextTitle(contentId);
+    if (!id)
+      return { text: "Which title do you want to find? Tell me the name and I'll show where it's streaming." };
+    const title = await runTool<TitleAvailability>(this.svc, "get_where_to_watch", { contentId: id });
+    this.ctx.setLastTitle(title.contentId);
+    this.ctx.setLastDiscovery([title.contentId]);
+    const connected = this.service.isConnected();
+    const owned = this.ownedOnPeacock(title);
+    if (!title.availability.length) {
+      return {
+        text: `I couldn't find where ${title.title} is streaming in this demo.`,
+        card: { kind: "title", data: title },
+        toolName: "get_where_to_watch",
+      };
+    }
+    const count = title.availability.length;
+    const lead = owned
+      ? `${title.title} is available on ${count} service${count === 1 ? "" : "s"}, including Peacock — which your connected account already covers.`
+      : this.isOnPeacock(title) && connected
+        ? `${title.title} is available on ${count} service${count === 1 ? "" : "s"}, including Peacock.`
+        : `${title.title} is available on ${count} service${count === 1 ? "" : "s"} in this demo.`;
+    return {
+      text: lead,
+      card: { kind: "where_to_watch", data: title, ownedOnPeacock: owned, connected },
+      toolName: "get_where_to_watch",
+    };
+  }
+
+  /**
+   * "Find X across services" — provider-neutral discovery search. Returns
+   * several titles each with cross-service availability, and remembers the
+   * result so a follow-up ("which of these do I already have?") can resolve
+   * against it.
+   */
+  private async handleDiscover(query: string): Promise<AgentResponse> {
+    const data = await runTool<TitleAvailability[]>(this.svc, "search_across_services", { query });
+    this.ctx.setLastDiscovery(data.map((t) => t.contentId));
+    if (data.length === 1) this.ctx.setLastTitle(data[0].contentId);
+    const connected = this.service.isConnected();
+    if (!data.length) {
+      return {
+        text: query
+          ? `I couldn't find anything matching "${query}" across the simulated services. Want to try a different title or genre?`
+          : "I couldn't find a match across the simulated services. Want to try a title or genre?",
+        card: { kind: "discovery", rows: [], connected },
+        toolName: "search_across_services",
+      };
+    }
+    const rows = data.map((t) => this.toRow(t));
+    const ownedCount = rows.filter((r) => r.ownedOnPeacock).length;
+    const tail = connected && ownedCount
+      ? ` ${ownedCount} of ${ownedCount === 1 ? "them is" : "these are"} on Peacock, which your account already covers.`
+      : "";
+    return {
+      text: query
+        ? `Here ${data.length === 1 ? "is a title" : "are some titles"} matching "${query}" across services:${tail}`
+        : `Here are some titles across services:${tail}`,
+      card: { kind: "discovery", rows, connected },
+      toolName: "search_across_services",
+    };
+  }
+
+  /**
+   * "Which of these do I already have?" — a follow-up on the last discovery
+   * result. Intersects those titles with the connected Peacock account. When
+   * disconnected, there's nothing to intersect, so we prompt to connect.
+   */
+  private async handleWhichDoIHave(): Promise<AgentResponse> {
+    const ids = this.ctx.getLastDiscovery();
+    if (!ids.length)
+      return { text: "Search for something first and I'll tell you which of the results your account already covers." };
+    const connected = this.service.isConnected();
+    const titles = await Promise.all(
+      ids.map((id) => runTool<TitleAvailability>(this.svc, "get_where_to_watch", { contentId: id })),
+    );
+    const rows = titles.map((t) => this.toRow(t));
+    if (!connected) {
+      return {
+        text: "I can only tell which titles your account already covers once your Peacock account is connected. This is a simulated connection — no username, password, or payment details.",
+        card: { kind: "discovery", rows, connected },
+        actions: [this.connectAction("which of these do I already have?")],
+      };
+    }
+    const owned = rows.filter((r) => r.ownedOnPeacock);
+    const names = owned.map((r) => r.title.title);
+    const text = owned.length
+      ? owned.length === rows.length
+        ? "Good news — your Peacock account already covers all of these."
+        : `Your Peacock account already covers ${owned.length} of these: ${names.join(", ")}.`
+      : "None of these are on Peacock in this demo — they're all on other services.";
+    return {
+      text,
+      card: { kind: "discovery", rows, connected },
     };
   }
 

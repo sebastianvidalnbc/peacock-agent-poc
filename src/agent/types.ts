@@ -6,7 +6,20 @@ import type {
   PlaybackDestination,
   PreviewInfo,
   Subscription,
+  TitleAvailability,
 } from "../peacock/types";
+
+/**
+ * A cross-service availability row as rendered in the UI: the raw title plus a
+ * flag the agent sets when the user's connected Peacock account already covers
+ * it (connection present and the title is on Peacock). This is the only place
+ * "ownership" is inferred, and only for Peacock — never for other providers.
+ */
+export interface DiscoveryRow {
+  title: TitleAvailability;
+  /** True when the connected Peacock account already provides this title. */
+  ownedOnPeacock: boolean;
+}
 
 /** Structured Peacock content rendered as a card beneath an assistant reply. */
 export type PeacockCard =
@@ -25,6 +38,14 @@ export type PeacockCard =
   | { kind: "title_offer"; data: CatalogTitle; preview?: PreviewInfo }
   /** A confirmed Peacock playback handoff destination for a title. */
   | { kind: "handoff"; data: CatalogTitle; destination: PlaybackDestination }
+  /**
+   * Cross-service "where to watch" for a single title: a neutral list of
+   * provider rows. The Peacock row is distinguished, and marked as owned when
+   * the connected account covers it.
+   */
+  | { kind: "where_to_watch"; data: TitleAvailability; ownedOnPeacock: boolean; connected: boolean }
+  /** A cross-service discovery result: several titles with availability. */
+  | { kind: "discovery"; rows: DiscoveryRow[]; connected: boolean }
   | { kind: "connect" };
 
 /**

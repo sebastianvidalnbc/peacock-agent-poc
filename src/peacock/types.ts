@@ -2,20 +2,24 @@ import type { z } from "zod";
 import type {
   AccountSummarySchema,
   AdsLevelSchema,
+  AvailabilitySchema,
   BillingIntervalSchema,
   BillingProviderSchema,
   CancellationPreviewSchema,
   CapabilitySchema,
   CatalogTitleSchema,
   EntitlementsSchema,
+  OfferTypeSchema,
   PlanChangePreviewSchema,
   PlanSchema,
   PlanTierSchema,
   PlaybackDestinationSchema,
   PreviewInfoSchema,
   PreviewTypeSchema,
+  StreamingProviderSchema,
   SubscriptionSchema,
   SubscriptionStatusSchema,
+  TitleAvailabilitySchema,
   TitleTypeSchema,
   ActionResultSchema,
   VideoQualitySchema,
@@ -40,6 +44,10 @@ export type Subscription = z.infer<typeof SubscriptionSchema>;
 export type Entitlements = z.infer<typeof EntitlementsSchema>;
 export type AccountSummary = z.infer<typeof AccountSummarySchema>;
 export type CatalogTitle = z.infer<typeof CatalogTitleSchema>;
+export type StreamingProvider = z.infer<typeof StreamingProviderSchema>;
+export type OfferType = z.infer<typeof OfferTypeSchema>;
+export type Availability = z.infer<typeof AvailabilitySchema>;
+export type TitleAvailability = z.infer<typeof TitleAvailabilitySchema>;
 export type WatchHistoryEntry = z.infer<typeof WatchHistoryEntrySchema>;
 export type Capability = z.infer<typeof CapabilitySchema>;
 export type PreviewType = z.infer<typeof PreviewTypeSchema>;

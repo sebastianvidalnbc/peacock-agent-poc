@@ -160,6 +160,26 @@ button { font: inherit; cursor: pointer; color: inherit; }
 .title-row-name { font-weight: 600; overflow-wrap: anywhere; }
 .title-row .meta { margin-top: 2px; }
 .title-row .chips { flex: none; justify-content: flex-end; }
+
+/* ---- Cross-service discovery (neutral: no Peacock source mark) ---- */
+.disc-card {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); overflow: hidden; max-width: 100%;
+}
+.disc-card .disc-body { padding: 14px 15px; display: flex; flex-direction: column; gap: 10px; }
+.provider-list { display: flex; flex-direction: column; }
+.provider-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; }
+.provider-row + .provider-row { border-top: 1px solid var(--border); }
+.provider-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.provider-name { font-weight: 600; overflow-wrap: anywhere; }
+.provider-row.peacock .provider-name::before {
+  content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 7px;
+  border-radius: 50%; background: var(--peacock); vertical-align: middle;
+}
+.disc-title-list { display: flex; flex-direction: column; }
+.disc-title { display: flex; flex-direction: column; gap: 6px; padding: 11px 0; }
+.disc-title + .disc-title { border-top: 1px solid var(--border); }
+.disc-title-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .cap { display: flex; gap: 10px; align-items: flex-start; }
 .cap .mark { flex: none; }
 .cap .mark.yes { color: var(--good); }
