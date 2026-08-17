@@ -5,7 +5,7 @@ import { runTool, type ServiceContext } from "../tools";
 import { routeIntent, detectGenre, type Intent } from "./intent-router";
 import { ConversationState } from "./conversation-state";
 import { COMMERCE_DISCLAIMER, UNSUPPORTED_MESSAGE } from "./capabilities";
-import { resolveTitleByName } from "../data/catalog";
+import { resolveTitleByName, providerLabel, findTitleById, type KnownProvider } from "../data/catalog";
 import { PeacockActionUnavailableError, PeacockNotConnectedError } from "../peacock/types";
 import type {
   AccountSummary,
@@ -17,7 +17,7 @@ import type {
   Subscription,
   TitleAvailability,
 } from "../peacock/types";
-import type { AgentResponse, AssistantAction, DiscoveryRow } from "./types";
+import type { AgentResponse, AssistantAction, DebugTrace, DiscoveryRow } from "./types";
 
 const ADS: Record<string, string> = {
   ads: "ad-supported streaming",
@@ -55,12 +55,31 @@ export class Agent {
     this.ctx.setLastIntent(intent.kind);
     if (this.delayMs > 0) await sleep(this.delayMs);
     try {
-      return await this.handle(intent, input);
+      const res = await this.handle(intent, input);
+      return { ...res, debug: this.traceFor(intent, res) };
     } catch (e) {
       if (e instanceof PeacockNotConnectedError) return this.connectPrompt(input);
       if (e instanceof PeacockActionUnavailableError) return { text: e.message };
       return { text: `Sorry — the prototype hit an error: ${(e as Error).message}` };
     }
+  }
+
+  /**
+   * Build the debug-only routing trace for a turn: the resolved intent, the
+   * extracted title and provider entities (when the intent carries them), and
+   * the tool the handler ran. Consumed only by the intent inspector when debug
+   * mode is on; it never affects user-facing copy.
+   */
+  private traceFor(intent: Intent, res: AgentResponse): DebugTrace {
+    const trace: DebugTrace = { intent: intent.kind };
+    const contentId =
+      "contentId" in intent && intent.contentId
+        ? intent.contentId
+        : this.ctx.getLastTitle() ?? undefined;
+    if (contentId) trace.title = findTitleById(contentId)?.title ?? contentId;
+    if ("provider" in intent && intent.provider) trace.provider = providerLabel(intent.provider);
+    if (res.toolName) trace.tool = res.toolName;
+    return trace;
   }
 
   /**
@@ -189,6 +208,8 @@ export class Agent {
         return this.handleWatchTitle(intent.contentId);
       case "title_availability":
         return this.handleTitleAvailability(intent.contentId);
+      case "provider_availability":
+        return this.handleProviderAvailability(intent.contentId, intent.provider);
       case "where_to_watch":
         return this.handleWhereToWatch(intent.contentId);
       case "discover":
@@ -207,6 +228,10 @@ export class Agent {
         return this.handleSearch(intent.query.trim());
       case "commerce_info":
         return { text: `${this.commerceLead(intent.topic)} ${COMMERCE_DISCLAIMER}` };
+      case "needs_title_clarification":
+        return {
+          text: "Which show or movie do you mean? Tell me the title and I'll check where you can watch it.",
+        };
       case "unknown":
       default:
         return { text: UNSUPPORTED_MESSAGE };
@@ -342,9 +367,13 @@ export class Agent {
     };
   }
 
-  /** "Is X on Peacock?" / "Where can I watch X?" — availability for a title. */
-  private async handleTitleAvailability(contentId: string): Promise<AgentResponse> {
-    const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId });
+  /** "Is X on Peacock?" — Peacock-specific availability for a title. Resolves
+   * the title from context when the request refers to it by pronoun. */
+  private async handleTitleAvailability(contentId?: string): Promise<AgentResponse> {
+    const id = this.resolveContextTitle(contentId);
+    if (!id)
+      return { text: "Which title do you want to check on Peacock? Tell me the name and I'll look it up." };
+    const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId: id });
     this.ctx.setLastTitle(title.contentId);
     if (!title.availableOnPeacock) {
       return {
@@ -354,7 +383,7 @@ export class Agent {
       };
     }
     const preview = title.previewAvailable
-      ? await runTool<PreviewInfo>(this.service, "get_preview", { contentId })
+      ? await runTool<PreviewInfo>(this.service, "get_preview", { contentId: id })
       : undefined;
     const connected = this.service.isConnected();
     const actions: AssistantAction[] = [];
@@ -366,6 +395,46 @@ export class Agent {
       card: { kind: "title_offer", data: title, preview },
       actions,
       toolName: "get_title_details",
+    };
+  }
+
+  /**
+   * "Is X on <provider>?" for a non-Peacock provider — a neutral, cross-service
+   * answer. We look up where the title streams and report whether that specific
+   * provider carries it, pointing to the other services it's on when it doesn't.
+   * The richer Peacock preview/connect card is deliberately reserved for the
+   * Peacock-specific path; here every provider (Peacock included, if it appears
+   * among the rows) is shown as one neutral option. Resolves the title from
+   * context when referred to by pronoun.
+   */
+  private async handleProviderAvailability(
+    contentId: string | undefined,
+    provider: KnownProvider,
+  ): Promise<AgentResponse> {
+    const label = providerLabel(provider);
+    const id = this.resolveContextTitle(contentId);
+    if (!id)
+      return { text: `Which title do you want to check on ${label}? Tell me the name and I'll look it up.` };
+    const title = await runTool<TitleAvailability>(this.svc, "get_where_to_watch", { contentId: id });
+    this.ctx.setLastTitle(title.contentId);
+    this.ctx.setLastDiscovery([title.contentId]);
+    const connected = this.service.isConnected();
+    const owned = this.ownedOnPeacock(title);
+    const onProvider = title.availability.some((a) => a.provider === provider);
+    const others = title.availability.filter((a) => a.provider !== provider);
+    let text: string;
+    if (onProvider) {
+      text = `Yes — ${title.title} is available on ${label} in this demo.`;
+    } else if (others.length) {
+      const names = Array.from(new Set(others.map((a) => providerLabel(a.provider))));
+      text = `${title.title} isn't on ${label} in this demo, but you can watch it on ${names.join(", ")}.`;
+    } else {
+      text = `I couldn't find ${title.title} on ${label} — or any service — in this demo.`;
+    }
+    return {
+      text,
+      card: { kind: "where_to_watch", data: title, ownedOnPeacock: owned, connected },
+      toolName: "get_where_to_watch",
     };
   }
 

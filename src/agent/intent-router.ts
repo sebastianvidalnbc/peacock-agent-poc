@@ -4,7 +4,7 @@
  * Add new phrasings by extending the keyword lists / patterns below.
  */
 
-import { extractTitleFromText } from "../data/catalog";
+import { extractTitleFromText, extractProvider, type KnownProvider } from "../data/catalog";
 
 export type Intent =
   | { kind: "capabilities" }
@@ -17,8 +17,19 @@ export type Intent =
   | { kind: "get_subscription" }
   /** "I want to watch X" — offer the title with preview + connect/open. */
   | { kind: "watch_title"; contentId: string }
-  /** "Is X on Peacock?" — Peacock-specific availability for a title. */
-  | { kind: "title_availability"; contentId: string }
+  /**
+   * "Is X on Peacock?" — Peacock-specific availability for a title. `contentId`
+   * may be omitted when the title is referred to by pronoun and resolved from
+   * conversation context by the agent.
+   */
+  | { kind: "title_availability"; contentId?: string }
+  /**
+   * "Is X on <provider>?" for a non-Peacock provider — answered neutrally via
+   * discovery, filtered to whether that provider carries the title. `contentId`
+   * may be omitted when the title is referred to by pronoun (resolved from
+   * context by the agent).
+   */
+  | { kind: "provider_availability"; contentId?: string; provider: KnownProvider }
   /** "Where can I watch X?" — cross-service availability for a title. */
   | { kind: "where_to_watch"; contentId?: string }
   /** "Find <something> across services" — cross-service discovery search. */
@@ -35,13 +46,69 @@ export type Intent =
   | { kind: "recommend"; criteria: string }
   /** An explicit catalog lookup with an extracted search term. */
   | { kind: "search_catalog"; query: string }
+  /**
+   * The request is recognisably in-domain (viewing/availability language) but a
+   * required entity — the title — is missing and no context resolves it. The
+   * agent asks a short clarification instead of the generic unsupported reply.
+   */
+  | { kind: "needs_title_clarification" }
   | { kind: "unknown" };
 
 const has = (t: string, words: string[]) => words.some((w) => t.includes(w));
 
+/**
+ * Normalise a raw user turn once, before any intent matching. Lowercases,
+ * collapses runs of whitespace, normalises curly apostrophes to straight ones,
+ * and strips trailing punctuation (including a space before a "?", so
+ * "…peacock ?" behaves like "…peacock?"). Meaningful title words are preserved
+ * — only surrounding noise is removed. Title extraction runs against the raw
+ * input separately so casing/spacing there is never a factor.
+ */
+export function normalize(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/\s+/g, " ")
+    .replace(/\s*[?.!]+\s*$/g, "")
+    .trim();
+}
+
 /** True when the text refers to a title only by pronoun ("it", "that", "this"). */
 function refersByPronoun(t: string): boolean {
-  return /\b(it|that|this|the show|the series|the title)\b/.test(t);
+  return /\b(it|that|this|the show|the series|the title|the movie|the film)\b/.test(t);
+}
+
+/**
+ * Viewing/availability language: does the turn talk about watching, streaming,
+ * or where something is available? Used both to broaden availability routing and
+ * to decide, in the fallback, whether an entity-less request is still in-domain.
+ */
+function hasViewingLanguage(t: string): boolean {
+  return (
+    has(t, [
+      "watch", "stream", "streaming", "available", "availability", "where can",
+      "where do", "where else", "where is", "where's", "put on", "see it",
+      "play", "on peacock", "on netflix", "on hulu", "on max", "on disney",
+      "on prime", "on apple", "on paramount", "what service", "what services",
+      "what platform", "have it", "carry", "carries",
+    ]) || /\bdoes\b.*\bhave\b/.test(t)
+  );
+}
+
+/**
+ * True for availability questions in any natural phrasing: "is/are X on …",
+ * "where can I watch X", "does <provider> have X", "is X streaming", "can I
+ * stream X", "how do I watch X", "what service has X".
+ */
+function asksAvailability(t: string): boolean {
+  if (/\bdoes\b.*\bhave\b/.test(t)) return true; // "does Peacock have X?"
+  if (/\b(is|are)\b.*\b(streaming|available|on (peacock|netflix|hulu|max|disney|prime|apple|paramount))\b/.test(t))
+    return true;
+  if (/\b(can|could) i (watch|stream)\b/.test(t)) return true;
+  if (/\bhow (do|can) i (watch|stream)\b/.test(t)) return true;
+  if (/\bwhere (can|do|is|else|to|are)\b/.test(t)) return true;
+  if (/\bwhat (service|services|platform|platforms)\b/.test(t)) return true;
+  return false;
 }
 
 /** Strip a leading verb and trailing "to/on my watchlist" from an add/remove. */
@@ -124,7 +191,9 @@ export function extractSearchQuery(input: string): string {
 }
 
 export function routeIntent(input: string): Intent {
-  const t = input.toLowerCase().trim();
+  // Normalise once for all keyword/phrase matching. Title extraction still runs
+  // against the raw `input` so casing/spacing inside a title never matters.
+  const t = normalize(input);
 
   if (
     has(t, [
@@ -210,23 +279,42 @@ export function routeIntent(input: string): Intent {
   )
     return { kind: "get_subscription" };
 
+  // --- Availability / where-to-watch (intent detected independently of the
+  // title entity, which may be named or referred to by pronoun) ---
+  // Entities: the concrete title (if any) and a named provider (if any) are
+  // extracted separately so the intent and its parameters stay decoupled.
+  const provider = extractProvider(t);
+  // Availability is a *question* ("is/where/does … have …?") or is signalled by
+  // an explicitly named provider ("… on Netflix"). Merely saying "watch X" is a
+  // playback offer (watch_title), not an availability question — so bare viewing
+  // language alone must NOT trigger this branch.
+  const wantsAvailability = asksAvailability(t) || !!provider;
+
+  if (wantsAvailability) {
+    // A non-Peacock provider named → provider-specific availability, answered
+    // neutrally via discovery filtered to that provider. Peacock keeps its own
+    // richer preview/connect card path (title_availability) below.
+    if (provider && provider !== "peacock") {
+      if (named) return { kind: "provider_availability", contentId: named.contentId, provider };
+      if (refersByPronoun(t)) return { kind: "provider_availability", provider };
+    }
+    // "Is X on Peacock?" — Peacock-specific availability question.
+    if (provider === "peacock") {
+      if (named) return { kind: "title_availability", contentId: named.contentId };
+      if (refersByPronoun(t)) return { kind: "title_availability" };
+    }
+    // No provider singled out → provider-neutral cross-service where-to-watch.
+    if (named) return { kind: "where_to_watch", contentId: named.contentId };
+    if (refersByPronoun(t)) return { kind: "where_to_watch" };
+    // In-domain viewing/availability language but no resolvable title → clarify
+    // instead of falling through to the generic unsupported reply.
+    return { kind: "needs_title_clarification" };
+  }
+
   // A concrete catalog title named in the text → content-discovery intents.
   // Placed after account/subscription/watchlist rules so those still win for
   // management phrasings (e.g. "add X to my watchlist").
   if (named) {
-    // A cross-service availability question ("where can I watch X?", "what
-    // services have X?", "how can I watch X?") that does NOT single out Peacock
-    // → provider-neutral where-to-watch. Placed before the Peacock-specific
-    // rule so a generic ask isn't answered as if Peacock were the only option.
-    const asksAvailability =
-      /\b(is|are|where|can i|how (do|can) i|what (service|services|platform|platforms))\b/.test(t) &&
-      has(t, ["on peacock", "available", "where can", "where do", "where to", "where else", "how do i watch", "how can i watch", "what service", "what services", "what platform", "streaming", "stream it"]);
-    const mentionsPeacock = /\bpeacock\b/.test(t);
-    if (asksAvailability && mentionsPeacock)
-      // "Is X on Peacock?" — Peacock-specific availability question.
-      return { kind: "title_availability", contentId: named.contentId };
-    if (asksAvailability)
-      return { kind: "where_to_watch", contentId: named.contentId };
     // Explicit catalog-lookup verbs keep their existing search behaviour so a
     // named title doesn't hijack "find X" / "search for X".
     const isSearchPhrasing = has(t, ["find", "search", "look for", "pull up", "is there"]);
@@ -246,14 +334,6 @@ export function routeIntent(input: string): Intent {
     return { kind: "open_in_peacock" };
   if (/\b(tell me more|more (info|information|details)|more about|what's it about|whats it about)\b/.test(t) && refersByPronoun(t))
     return { kind: "title_details" };
-  // "Where else can I watch it?" / "What services have it?" — cross-service
-  // availability for the current title (resolved from context by the agent).
-  if (
-    refersByPronoun(t) &&
-    !/\bpeacock\b/.test(t) &&
-    has(t, ["where can", "where else", "where to", "what service", "what services", "what platform", "how can i watch", "how do i watch"])
-  )
-    return { kind: "where_to_watch" };
 
   // Open-ended discovery → recommendation intent (not a literal search).
   if (isRecommendationAsk(t))
@@ -274,6 +354,13 @@ export function routeIntent(input: string): Intent {
   // A bare mood/genre word (e.g. "comedy", "something funny") is discovery.
   if (detectGenre(t))
     return { kind: "recommend", criteria: detectGenre(t) };
+
+  // Recognisably in-domain viewing/availability language but nothing above
+  // resolved a title or genre → ask a short clarification rather than the
+  // generic unsupported reply. This keeps the fallback graceful for phrasings
+  // like "watch something" or "is it streaming anywhere" that name no entity.
+  if (hasViewingLanguage(t))
+    return { kind: "needs_title_clarification" };
 
   return { kind: "unknown" };
 }

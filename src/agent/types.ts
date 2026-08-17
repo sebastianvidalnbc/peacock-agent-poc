@@ -63,6 +63,19 @@ export interface AssistantAction {
   contentId?: string;
 }
 
+/**
+ * A compact, debug-only trace of how a turn was routed: the resolved intent, the
+ * title and provider entities that were extracted (if any), and the tool that
+ * ran. Surfaced only when the prototype's debug ("show tool activity") mode is
+ * on, and never part of the assistant's user-facing copy.
+ */
+export interface DebugTrace {
+  intent: string;
+  title?: string;
+  provider?: string;
+  tool?: string;
+}
+
 /** The assistant's structured reply to a single user turn. */
 export interface AgentResponse {
   text: string;
@@ -70,6 +83,8 @@ export interface AgentResponse {
   actions?: AssistantAction[];
   /** Name of the tool invoked, for the prototype's tool-activity indicator. */
   toolName?: string;
+  /** Debug-only routing trace, populated by the agent for the intent inspector. */
+  debug?: DebugTrace;
 }
 
 export type ChatRole = "user" | "assistant";
@@ -82,4 +97,6 @@ export interface ChatMessage {
   card?: PeacockCard;
   actions?: AssistantAction[];
   toolName?: string;
+  /** Debug-only routing trace, shown in the intent inspector when debug is on. */
+  debug?: DebugTrace;
 }

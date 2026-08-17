@@ -64,6 +64,7 @@ export function App() {
           card: res.card,
           actions: res.actions,
           toolName: res.toolName,
+          debug: res.debug,
         },
       ]);
     } finally {
@@ -105,6 +106,7 @@ export function App() {
           card: res.card,
           actions: res.actions,
           toolName: res.toolName,
+          debug: res.debug,
         },
       ]);
     } finally {

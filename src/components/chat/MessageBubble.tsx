@@ -38,6 +38,28 @@ export function MessageBubble({
             Peacock · {message.toolName} · Completed
           </div>
         )}
+        {debug && !isUser && message.debug && (
+          <div className="intent-inspector" aria-label="Intent inspector">
+            <span className="ii-item">
+              <span className="ii-key">Intent</span> {message.debug.intent}
+            </span>
+            {message.debug.title && (
+              <span className="ii-item">
+                <span className="ii-key">Title</span> {message.debug.title}
+              </span>
+            )}
+            {message.debug.provider && (
+              <span className="ii-item">
+                <span className="ii-key">Provider</span> {message.debug.provider}
+              </span>
+            )}
+            {message.debug.tool && (
+              <span className="ii-item">
+                <span className="ii-key">Tool</span> {message.debug.tool}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

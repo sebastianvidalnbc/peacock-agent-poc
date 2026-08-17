@@ -337,3 +337,112 @@ describe("Neutral home state (default starter prompts)", () => {
     if (res.card?.kind === "discovery") expect(res.card.connected).toBe(false);
   });
 });
+
+describe("Intent + entity routing hardening", () => {
+  beforeEach(() => {
+    prototypeStore.clearAll();
+  });
+
+  // Colloquial title names must resolve via the alias layer, in any casing and
+  // tolerating trailing whitespace before the "?".
+  it.each([
+    "Can I watch Love Island on Peacock?",
+    "Can I watch love island on peacock ?",
+    "Is Love Island on Peacock?",
+    "Does Peacock have Love Island?",
+  ])("answers Peacock availability for the colloquial phrasing %j", async (prompt) => {
+    const agent = connectedAgent();
+    const res = await agent.respond(prompt);
+    expect(res.card?.kind).toBe("title_offer");
+    expect(res.text.toLowerCase()).toContain("available on peacock");
+    const title = res.card?.kind === "title_offer" ? res.card.data : undefined;
+    expect(title?.title).toBe("Love Island USA");
+  });
+
+  it("routes a bare 'Where can I watch Love Island?' to a neutral cross-service card (Peacock among others)", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("Where can I watch Love Island?");
+    expect(res.card?.kind).toBe("where_to_watch");
+    expect(res.toolName).toBe("get_where_to_watch");
+    if (res.card?.kind === "where_to_watch") expect(res.card.data.title).toBe("Love Island USA");
+  });
+
+  it("answers 'Is Bridesmaids on Netflix?' affirmatively via neutral discovery (no Peacock connect card)", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("Is Bridesmaids on Netflix?");
+    expect(res.card?.kind).toBe("where_to_watch");
+    expect(res.toolName).toBe("get_where_to_watch");
+    expect(res.text.toLowerCase()).toContain("netflix");
+    expect(res.text.toLowerCase()).toMatch(/^yes/);
+    // The richer Peacock preview/connect actions are reserved for Peacock.
+    expect(res.actions ?? []).toHaveLength(0);
+  });
+
+  it("answers 'Is Shrek on Netflix?' negatively but points to the services that do carry it", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("Is Shrek on Netflix?");
+    expect(res.card?.kind).toBe("where_to_watch");
+    const text = res.text.toLowerCase();
+    expect(text).toContain("isn't on netflix");
+    // Shrek's real fixtures (Hulu + Prime Video) are surfaced as alternatives.
+    expect(text).toMatch(/hulu|prime video/);
+  });
+
+  it("gives Peacock its own availability card even for a non-home title ('Is Jaws on Peacock?')", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("Is Jaws on Peacock?");
+    expect(res.card?.kind).toBe("title_offer");
+    expect(res.text.toLowerCase()).toContain("available on peacock");
+  });
+
+  // The 4-turn context sequence from the brief: name a title, then refer to it
+  // by pronoun across availability, preview, and open.
+  it("carries title context across a 4-turn availability → preview → open sequence", async () => {
+    const agent = connectedAgent();
+    const t1 = await agent.respond("Is Love Island on Peacock?");
+    expect(t1.card?.kind).toBe("title_offer");
+
+    const t2 = await agent.respond("Can I watch it on Peacock?");
+    expect(t2.card?.kind).toBe("title_offer");
+    if (t2.card?.kind === "title_offer") expect(t2.card.data.title).toBe("Love Island USA");
+
+    const t3 = await agent.respond("Can I preview it?");
+    expect(t3.toolName).toBe("get_preview");
+    expect(t3.card?.kind).toBe("title_offer");
+
+    const t4 = await agent.respond("Open it in Peacock");
+    expect(t4.card?.kind).toBe("handoff");
+    if (t4.card?.kind === "handoff") expect(t4.card.data.title).toBe("Love Island USA");
+  });
+
+  it("resolves 'Where else can I watch it?' after a Peacock availability question", async () => {
+    const agent = connectedAgent();
+    await agent.respond("Is Love Island on Peacock?");
+    const res = await agent.respond("Where else can I watch it?");
+    expect(res.card?.kind).toBe("where_to_watch");
+    if (res.card?.kind === "where_to_watch") expect(res.card.data.title).toBe("Love Island USA");
+  });
+
+  it("asks a short clarification (not the unsupported reply) when availability language names no title", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("Where can I watch it?");
+    expect(res.card).toBeUndefined();
+    expect(res.text.toLowerCase()).toMatch(/which (title|show or movie)/);
+  });
+
+  it("populates the debug trace with intent, title, provider, and tool", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("Is Shrek on Netflix?");
+    expect(res.debug?.intent).toBe("provider_availability");
+    expect(res.debug?.title).toBe("Shrek");
+    expect(res.debug?.provider).toBe("Netflix");
+    expect(res.debug?.tool).toBe("get_where_to_watch");
+  });
+
+  it("does not let a named title hijack a recommendation ('What should I watch tonight?')", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("What should I watch tonight?");
+    expect(res.card).toBeUndefined();
+    expect(agent.ctx.isAwaitingRecommendCriteria()).toBe(true);
+  });
+});

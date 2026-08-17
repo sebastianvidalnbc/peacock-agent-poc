@@ -31,6 +31,16 @@ export const PROVIDER_LABELS: Record<StreamingProvider, string> = {
   apple_tv_plus: "Apple TV+",
 };
 
+/**
+ * Display label for any provider the agent can recognise in free text,
+ * including "paramount_plus" — which is understood as a provider term for
+ * routing even though no fixture currently carries it.
+ */
+export function providerLabel(provider: string): string {
+  if (provider === "paramount_plus") return "Paramount+";
+  return PROVIDER_LABELS[provider as StreamingProvider] ?? provider;
+}
+
 /** Build a mock deep-link ref for a provider + title (prototype only). */
 function link(provider: StreamingProvider, contentId: string): string {
   return `mock://${provider}/watch/${contentId}`;
@@ -102,6 +112,8 @@ const EXPANDED_CATALOG: TitleAvailability[] = [
   demo("ttl_midnight_cartography", "Midnight Cartography", "film", ["Adventure", "Fantasy"], 2019, "PG-13", "A mapmaker discovers her charts redraw the coastline overnight.", false, ["prime_video"]),
   demo("ttl_second_service", "Second Service", "series", ["Reality"], 2023, "TV-PG", "Retired restaurateurs mentor first-time owners through opening week.", false, ["peacock"]),
   demo("ttl_jaws", "Jaws", "film", ["Thriller", "Adventure"], 1975, "PG", "A beach town's police chief hunts a great white shark terrorising the waters.", true, ["peacock", "prime_video", "apple_tv_plus"]),
+  demo("ttl_shrek", "Shrek", "film", ["Comedy", "Adventure"], 2001, "PG", "A grumpy ogre and a talkative donkey set out to rescue a princess.", true, ["hulu", "prime_video"]),
+  demo("ttl_bridesmaids", "Bridesmaids", "film", ["Comedy"], 2011, "R", "A maid of honour's life unravels as she leads her best friend's wedding party.", true, ["peacock", "netflix"]),
 ];
 
 export const CATALOG: TitleAvailability[] = [
@@ -298,20 +310,90 @@ export function resolveTitleByName(name: string): TitleAvailability | undefined 
 }
 
 /**
+ * Common alternate names users type for a title, keyed by contentId. The
+ * canonical title always wins as the resolved result; aliases only widen what
+ * text will match. This is the single, reusable place to teach the agent
+ * colloquial title names — e.g. "Love Island" for "Love Island USA" — without
+ * duplicating fixtures. Aliases are matched case-insensitively as whole
+ * substrings, using the same longest-match rule as canonical titles.
+ */
+export const TITLE_ALIASES: Record<string, string[]> = {
+  ttl_love_island_usa: ["Love Island"],
+};
+
+/**
+ * All (canonical title + aliases) match candidates, precomputed as lowercase
+ * strings paired with the title they resolve to. Sorted longest-first so the
+ * most specific match wins (e.g. "Love Island USA" beats "Love Island").
+ */
+const TITLE_MATCH_INDEX: { needle: string; title: TitleAvailability }[] = CATALOG.flatMap(
+  (title) => {
+    const names = [title.title, ...(TITLE_ALIASES[title.contentId] ?? [])];
+    return names.map((name) => ({ needle: name.toLowerCase(), title }));
+  },
+).sort((a, b) => b.needle.length - a.needle.length);
+
+/**
  * Resolve a whole user sentence to a specific catalog title by finding the
- * longest catalog title that appears as a substring of the text. This lets the
- * agent extract "Love Island USA" from "I want to watch Love Island USA"
- * without passing the entire sentence into a literal catalog search.
+ * longest known title name (canonical or alias) that appears as a substring of
+ * the text. This lets the agent extract "Love Island USA" from "I want to watch
+ * Love Island USA" — and "Love Island" from "Can I watch Love Island on
+ * Peacock?" — without passing the entire sentence into a literal catalog search.
+ * The returned record is always the canonical TitleAvailability.
  */
 export function extractTitleFromText(text: string): TitleAvailability | undefined {
   const t = text.toLowerCase();
-  let best: TitleAvailability | undefined;
-  for (const title of CATALOG) {
-    if (t.includes(title.title.toLowerCase())) {
-      if (!best || title.title.length > best.title.length) best = title;
-    }
+  for (const { needle, title } of TITLE_MATCH_INDEX) {
+    if (t.includes(needle)) return title;
   }
-  return best;
+  return undefined;
+}
+
+/**
+ * The streaming providers this prototype understands in free text, mapped from
+ * the various ways a user might type them to the canonical provider id. Matched
+ * case-insensitively. "paramount_plus" is recognised as a provider term even
+ * though no fixture carries it yet, so a "Is X on Paramount+?" question routes
+ * as a provider-availability question rather than falling through.
+ */
+export type KnownProvider = StreamingProvider | "paramount_plus";
+
+const PROVIDER_TERMS: { needle: string; provider: KnownProvider }[] = (
+  [
+    { needle: "peacock", provider: "peacock" },
+    { needle: "netflix", provider: "netflix" },
+    { needle: "hulu", provider: "hulu" },
+    { needle: "disney+", provider: "disney_plus" },
+    { needle: "disney plus", provider: "disney_plus" },
+    { needle: "disney", provider: "disney_plus" },
+    { needle: "prime video", provider: "prime_video" },
+    { needle: "amazon prime", provider: "prime_video" },
+    { needle: "prime", provider: "prime_video" },
+    { needle: "apple tv+", provider: "apple_tv_plus" },
+    { needle: "apple tv plus", provider: "apple_tv_plus" },
+    { needle: "apple tv", provider: "apple_tv_plus" },
+    { needle: "appletv", provider: "apple_tv_plus" },
+    { needle: "paramount+", provider: "paramount_plus" },
+    { needle: "paramount plus", provider: "paramount_plus" },
+    { needle: "paramount", provider: "paramount_plus" },
+    { needle: "max", provider: "max" },
+  ] satisfies { needle: string; provider: KnownProvider }[]
+)
+  // Longest term first so "prime video" wins over "prime", "disney plus" over
+  // "disney", etc.
+  .sort((a, b) => b.needle.length - a.needle.length);
+
+/**
+ * Extract a streaming provider named anywhere in the text, independent of any
+ * title. Case-insensitive. Returns undefined when no provider is mentioned, so
+ * a generic "where can I watch X?" stays provider-neutral.
+ */
+export function extractProvider(text: string): KnownProvider | undefined {
+  const t = text.toLowerCase();
+  for (const { needle, provider } of PROVIDER_TERMS) {
+    if (t.includes(needle)) return provider;
+  }
+  return undefined;
 }
 
 /**
