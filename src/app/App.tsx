@@ -176,6 +176,10 @@ export function App() {
           prototypeStore.clearAll();
           resetConversation();
         }}
+        onTryPrompt={(prompt) => {
+          setSettingsOpen(false);
+          void handleSend(prompt);
+        }}
         onClose={() => setSettingsOpen(false)}
       />
     </div>

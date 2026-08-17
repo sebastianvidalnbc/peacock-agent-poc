@@ -3,6 +3,7 @@ import { Agent } from "./agent";
 import { ConversationState } from "./conversation-state";
 import { MockPeacockService } from "../peacock/MockPeacockService";
 import { prototypeStore } from "../state/prototype-store";
+import { STARTER_PROMPTS } from "./capabilities";
 
 /** Build a connected agent with no artificial delay for deterministic tests. */
 function connectedAgent() {
@@ -298,5 +299,41 @@ describe("Cross-service discovery (Phase 2B)", () => {
     const res = await agent.respond("Where else can I watch it?");
     expect(res.card?.kind).toBe("where_to_watch");
     if (res.card?.kind === "where_to_watch") expect(res.card.data.title).toBe("Signal Lost");
+  });
+});
+
+describe("Neutral home state (default starter prompts)", () => {
+  beforeEach(() => {
+    prototypeStore.clearAll();
+  });
+
+  it("keeps the default starter prompts provider-neutral (no Peacock on the home screen)", () => {
+    expect(STARTER_PROMPTS).toEqual([
+      "What should I watch tonight?",
+      "Recommend a funny movie",
+      "Where can I watch Jaws?",
+    ]);
+    expect(STARTER_PROMPTS.some((p) => /peacock/i.test(p))).toBe(false);
+  });
+
+  it("answers the 'Where can I watch Jaws?' starter with a neutral cross-service card that includes Peacock", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("Where can I watch Jaws?");
+    expect(res.card?.kind).toBe("where_to_watch");
+    expect(res.toolName).toBe("get_where_to_watch");
+    const providers =
+      res.card?.kind === "where_to_watch" ? res.card.data.availability.map((a) => a.provider) : [];
+    // Peacock surfaces naturally as one provider among several — not preferred.
+    expect(providers).toContain("peacock");
+    expect(providers.length).toBeGreaterThan(1);
+  });
+
+  it("answers the 'Recommend a funny movie' starter without requiring or mentioning a connection", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("Recommend a funny movie");
+    expect(res.toolName).toBe("get_recommendations");
+    expect(res.card?.kind).toBe("discovery");
+    // Disconnected home state never claims Peacock ownership.
+    if (res.card?.kind === "discovery") expect(res.card.connected).toBe(false);
   });
 });

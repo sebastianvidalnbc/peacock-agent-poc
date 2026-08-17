@@ -101,6 +101,7 @@ const EXPANDED_CATALOG: TitleAvailability[] = [
   demo("ttl_the_glasshouse", "The Glasshouse", "series", ["Mystery", "Drama"], 2022, "TV-MA", "A locked botanical estate hides the truth about its owner's fortune.", true, ["max", "peacock"]),
   demo("ttl_midnight_cartography", "Midnight Cartography", "film", ["Adventure", "Fantasy"], 2019, "PG-13", "A mapmaker discovers her charts redraw the coastline overnight.", false, ["prime_video"]),
   demo("ttl_second_service", "Second Service", "series", ["Reality"], 2023, "TV-PG", "Retired restaurateurs mentor first-time owners through opening week.", false, ["peacock"]),
+  demo("ttl_jaws", "Jaws", "film", ["Thriller", "Adventure"], 1975, "PG", "A beach town's police chief hunts a great white shark terrorising the waters.", true, ["peacock", "prime_video", "apple_tv_plus"]),
 ];
 
 export const CATALOG: TitleAvailability[] = [

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { listPersonas } from "../../data/personas";
-import { ABOUT_LINES } from "../../agent/capabilities";
+import { ABOUT_LINES, THINGS_TO_TRY } from "../../agent/capabilities";
 
 /**
  * Prototype settings, grouped into sections: the simulated demo account,
@@ -22,6 +22,7 @@ export function SettingsPanel({
   onDisconnect,
   onReset,
   onClear,
+  onTryPrompt,
   onClose,
 }: {
   open: boolean;
@@ -32,6 +33,8 @@ export function SettingsPanel({
   onDisconnect: () => void;
   onReset: () => void;
   onClear: () => void;
+  /** Send one of the Peacock-specific example prompts into the conversation. */
+  onTryPrompt: (prompt: string) => void;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -128,6 +131,24 @@ export function SettingsPanel({
                   Disconnect Peacock
                 </button>
               )}
+            </div>
+          </section>
+
+          <section className="settings-section">
+            <h3>Things to try</h3>
+            <p className="note">
+              Peacock-specific example prompts. Tap one to send it into the conversation.
+            </p>
+            <div className="settings-list">
+              {THINGS_TO_TRY.map((prompt) => (
+                <button
+                  key={prompt}
+                  className="btn action"
+                  onClick={() => onTryPrompt(prompt)}
+                >
+                  <span className="name">{prompt}</span>
+                </button>
+              ))}
             </div>
           </section>
 
