@@ -214,8 +214,11 @@ export class Agent {
   }
 
   /**
-   * A discovery request. With a genre criterion we search for it; without one we
-   * ask a short conversational follow-up and remember that we're waiting for it.
+   * A discovery request. With a genre criterion we recommend across services;
+   * without one we ask a short conversational follow-up and remember that we're
+   * waiting for it. Recommendations are provider-neutral by default — they span
+   * every simulated service and only highlight Peacock rows the connected
+   * account already covers.
    */
   private async handleRecommend(criteria: string): Promise<AgentResponse> {
     if (!criteria) {
@@ -225,19 +228,26 @@ export class Agent {
       };
     }
     this.ctx.setAwaitingRecommendCriteria(false);
-    const data = await runTool<CatalogTitle[]>(this.service, "search_catalog", { query: criteria });
+    const data = await runTool<TitleAvailability[]>(this.svc, "get_recommendations", { genre: criteria });
+    this.ctx.setLastDiscovery(data.map((t) => t.contentId));
     if (data.length === 1) this.ctx.setLastTitle(data[0].contentId);
+    const connected = this.service.isConnected();
     if (!data.length) {
       return {
-        text: `I couldn't find any ${criteria} titles in the demo catalog. Want me to show what's available, or try a different mood like comedy or drama?`,
-        card: { kind: "search", data: [] },
-        toolName: "search_catalog",
+        text: `I couldn't find any ${criteria} titles across the simulated services. Want to try a different mood like comedy or drama?`,
+        card: { kind: "discovery", rows: [], connected },
+        toolName: "get_recommendations",
       };
     }
+    const rows = data.map((t) => this.toRow(t));
+    const ownedCount = rows.filter((r) => r.ownedOnPeacock).length;
+    const tail = connected && ownedCount
+      ? ` ${ownedCount} of ${ownedCount === 1 ? "them is" : "these are"} on Peacock, which your account already covers.`
+      : "";
     return {
-      text: `Here ${data.length === 1 ? "is a" : "are some"} ${criteria} pick${data.length === 1 ? "" : "s"} you might enjoy:`,
-      card: { kind: "search", data },
-      toolName: "search_catalog",
+      text: `Here ${data.length === 1 ? "is a" : "are some"} ${criteria} pick${data.length === 1 ? "" : "s"} across services you might enjoy:${tail}`,
+      card: { kind: "discovery", rows, connected },
+      toolName: "get_recommendations",
     };
   }
 

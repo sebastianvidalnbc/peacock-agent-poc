@@ -38,12 +38,16 @@ describe("Agent intent understanding", () => {
     const agent = connectedAgent();
     await agent.respond("What should I watch tonight?");
     const res = await agent.respond("Something funny");
-    expect(res.toolName).toBe("search_catalog");
-    expect(res.card?.kind).toBe("search");
-    const titles = res.card?.kind === "search" ? res.card.data : [];
-    expect(titles.length).toBeGreaterThan(0);
+    // Recommendations are cross-service by default (neutral discovery card).
+    expect(res.toolName).toBe("get_recommendations");
+    expect(res.card?.kind).toBe("discovery");
+    const rows = res.card?.kind === "discovery" ? res.card.rows : [];
+    expect(rows.length).toBeGreaterThan(0);
     // Every returned title should genuinely be a comedy (data via the service).
-    expect(titles.every((t) => t.genres.some((g) => g.toLowerCase() === "comedy"))).toBe(true);
+    expect(rows.every((r) => r.title.genres.some((g) => g.toLowerCase() === "comedy"))).toBe(true);
+    // Results span more than just Peacock — other providers appear too.
+    const providers = new Set(rows.flatMap((r) => r.title.availability.map((a) => a.provider)));
+    expect(providers.size).toBeGreaterThan(1);
     expect(agent.ctx.isAwaitingRecommendCriteria()).toBe(false);
   });
 
@@ -99,10 +103,11 @@ describe("Agent intent understanding", () => {
   it("recommends directly when a genre is already given ('Recommend a comedy')", async () => {
     const agent = connectedAgent();
     const res = await agent.respond("Recommend a comedy");
-    expect(res.toolName).toBe("search_catalog");
-    const titles = res.card?.kind === "search" ? res.card.data : [];
-    expect(titles.length).toBeGreaterThan(0);
-    expect(titles.every((t) => t.genres.some((g) => g.toLowerCase() === "comedy"))).toBe(true);
+    expect(res.toolName).toBe("get_recommendations");
+    expect(res.card?.kind).toBe("discovery");
+    const rows = res.card?.kind === "discovery" ? res.card.rows : [];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.title.genres.some((g) => g.toLowerCase() === "comedy"))).toBe(true);
   });
 
   it("does not invent data: a non-Peacock request is unsupported, with no card", async () => {
