@@ -18,6 +18,7 @@ export const searchCatalogTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  authModes: ["noauth", "oauth2"],
   readOnlyHint: true,
   openWorldHint: true,
   handler: (service, input) => service.searchCatalog(input.query),
@@ -33,6 +34,7 @@ export const getTitleDetailsTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  authModes: ["noauth", "oauth2"],
   readOnlyHint: true,
   openWorldHint: true,
   handler: (service, input) => service.getTitleDetails(input.contentId),
@@ -48,6 +50,7 @@ export const getPreviewTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  authModes: ["noauth", "oauth2"],
   readOnlyHint: true,
   openWorldHint: false,
   handler: (service, input) => service.getPreview(input.contentId),
@@ -63,6 +66,9 @@ export const getPlaybackDestinationTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  // Dual-mode: a Guest gets the public open-destination; a connected account
+  // gets the same handoff with account-aware context layered on by the agent.
+  authModes: ["noauth", "oauth2"],
   readOnlyHint: true,
   // Handoff to the external Peacock app — an open-world interaction.
   openWorldHint: true,

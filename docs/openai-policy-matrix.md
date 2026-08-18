@@ -54,6 +54,38 @@ above. OpenAI guidance changes; re-check all four sources and reconcile
 | Upgrade promotion | RED | Never promote a higher tier | app-guidelines |
 | Direct transactional / checkout link | RED | Never link to a purchase surface | app-guidelines |
 
+## Guest Mode & optional authentication (MCP optional-auth pattern)
+
+Reflecting OpenAI's optional-authentication MCP pattern, each tool advertises an
+`authModes` contract (`src/tools/access.ts`) that is **orthogonal** to the
+GREEN/YELLOW/RED policy status above — policy answers *"is this permitted?"*,
+access answers *"who can run it?"*.
+
+- **Guest** = the absence of a connected Peacock persona (`connectedPersonaId`
+  is `null`). Guest is **not** a silently-created customer account — no OAuth,
+  no profile, no overlay is created.
+- **`noauth`** — runnable by a Guest (anonymous, public).
+- **`oauth2`** — requires the simulated Peacock connection.
+- **Dual (`["noauth","oauth2"]`)** — public results for a Guest; richer,
+  account-aware results once connected.
+
+| Access mode | Tools | Guest can run? |
+|---|---|---|
+| Dual (noauth + oauth2) | `search_catalog`, `get_title_details`, `get_preview`, `get_playback_destination`, `search_across_services`, `get_where_to_watch`, `get_recommendations`, `get_supported_capabilities` | Yes (public result) |
+| oauth2 only | `get_account_summary`, `get_subscription`, `get_entitlements`, `get_watchlist`, `add_to_watchlist`, `remove_from_watchlist`, `get_viewing_history`, `get_continue_watching`, `get_resume_position`, `get_next_episode` | No — prompts to connect |
+
+- A Guest attempting a **personal read** (subscription, entitlements, watchlist,
+  viewing history) gets the connect prompt and **no** account card or tool call.
+- A Guest attempting a **personal write** (save to My Stuff) gets the
+  write-specific prompt *"Connect Peacock to save this to My Stuff."*; the
+  original intent is preserved and auto-resumes after the simulated connection.
+- The **Access Inspector** (shown with the debug/policy toggles) labels each
+  turn `Guest / noauth` or `Connected Peacock / oauth2`.
+
+Enforcement is verified in `src/tools/access.test.ts` and the *Guest Peacock
+Mode — access boundary* suite in `src/agent/agent.test.ts` (Guest cannot read or
+mutate authenticated account data; Guest can use anonymous tools).
+
 ## Enforcement in code
 
 - **Single source of truth:** `POLICY_MAP` in `src/policy/policy.ts`. The agent,
@@ -73,15 +105,15 @@ above. OpenAI guidance changes; re-check all four sources and reconcile
 
 ## MCP annotations summary
 
-| Tool group | readOnlyHint | destructiveHint | openWorldHint |
-|---|---|---|---|
-| Account/subscription/entitlement/watchlist reads | true | — | false |
-| Viewing history / Continue Watching reads | true | — | false |
-| Catalog search / title details | true | — | true |
-| Preview | true | — | false |
-| Playback handoff | true | — | true |
-| Watchlist writes (add/remove) | false | false | true |
-| Cross-service discovery | true | — | true |
+| Tool group | readOnlyHint | destructiveHint | openWorldHint | authModes |
+|---|---|---|---|---|
+| Account/subscription/entitlement/watchlist reads | true | — | false | oauth2 |
+| Viewing history / Continue Watching reads | true | — | false | oauth2 |
+| Catalog search / title details | true | — | true | noauth + oauth2 |
+| Preview | true | — | false | noauth + oauth2 |
+| Playback handoff | true | — | true | noauth + oauth2 |
+| Watchlist writes (add/remove) | false | false | true | oauth2 |
+| Cross-service discovery | true | — | true | noauth + oauth2 |
 
 ## Caveats
 

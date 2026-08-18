@@ -25,7 +25,8 @@ import type {
   ViewingProgress,
 } from "../peacock/types";
 import { POLICY_MAP, type PolicyCapabilityId, type PolicyStatus } from "../policy/policy";
-import type { AgentResponse, AssistantAction, DebugTrace, DiscoveryRow } from "./types";
+import { accessLabelFor } from "../tools/access";
+import type { AccessInfo, AgentResponse, AssistantAction, DebugTrace, DiscoveryRow } from "./types";
 
 const ADS: Record<string, string> = {
   ads: "ad-supported streaming",
@@ -64,12 +65,26 @@ export class Agent {
     if (this.delayMs > 0) await sleep(this.delayMs);
     try {
       const res = await this.handle(intent, input);
-      return { ...res, debug: this.traceFor(intent, res) };
+      return this.withAccess({ ...res, debug: this.traceFor(intent, res) });
     } catch (e) {
-      if (e instanceof PeacockNotConnectedError) return this.connectPrompt(input);
-      if (e instanceof PeacockActionUnavailableError) return { text: e.message };
-      return { text: `Sorry — the prototype hit an error: ${(e as Error).message}` };
+      if (e instanceof PeacockNotConnectedError) return this.withAccess(this.connectPrompt(input));
+      if (e instanceof PeacockActionUnavailableError) return this.withAccess({ text: e.message });
+      return this.withAccess({ text: `Sorry — the prototype hit an error: ${(e as Error).message}` });
     }
+  }
+
+  /**
+   * The Access Inspector descriptor for the current connection state. "Guest"
+   * is simply the absence of a connected Peacock persona (no OAuth) — never a
+   * silently-created account.
+   */
+  private get access(): AccessInfo {
+    return accessLabelFor(this.service.isConnected());
+  }
+
+  /** Stamp the current access descriptor onto a response (client-side chrome). */
+  private withAccess(res: AgentResponse): AgentResponse {
+    return { access: this.access, ...res };
   }
 
   /**
@@ -101,11 +116,12 @@ export class Agent {
     try {
       const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId });
       this.ctx.setLastTitle(title.contentId);
-      return await this.handleOpenInPeacock(contentId, `Open ${title.title} in Peacock`);
+      return this.withAccess(await this.handleOpenInPeacock(contentId, `Open ${title.title} in Peacock`));
     } catch (e) {
-      if (e instanceof PeacockNotConnectedError) return this.connectPrompt(`Open ${contentId} in Peacock`);
-      if (e instanceof PeacockActionUnavailableError) return { text: e.message };
-      return { text: `Sorry — the prototype hit an error: ${(e as Error).message}` };
+      if (e instanceof PeacockNotConnectedError)
+        return this.withAccess(this.connectPrompt(`Open ${contentId} in Peacock`));
+      if (e instanceof PeacockActionUnavailableError) return this.withAccess({ text: e.message });
+      return this.withAccess({ text: `Sorry — the prototype hit an error: ${(e as Error).message}` });
     }
   }
 
@@ -155,6 +171,19 @@ export class Agent {
   private connectPrompt(resumeText: string): AgentResponse {
     return {
       text: "To do that I need to connect to your Peacock account. This is a simulated connection — I won't ask for a username, password, or payment details.",
+      card: { kind: "connect" },
+      actions: [this.connectAction(resumeText)],
+    };
+  }
+
+  /**
+   * A Guest tried a personal write (save to My Stuff). Prompt to connect with
+   * write-specific copy and preserve the original intent so it auto-resumes
+   * after the simulated authorization.
+   */
+  private connectToSavePrompt(resumeText: string): AgentResponse {
+    return {
+      text: "Connect Peacock to save this to My Stuff.",
       card: { kind: "connect" },
       actions: [this.connectAction(resumeText)],
     };
@@ -454,8 +483,11 @@ export class Agent {
   }
 
   private async handleWatchlistWrite(titleQuery: string, input: string, add: boolean): Promise<AgentResponse> {
-    const g = this.guard(input);
-    if (g) return g;
+    // A Guest cannot mutate My Stuff. For an add, use the write-specific
+    // "save to My Stuff" prompt; either way the original intent is preserved
+    // and auto-resumes after the simulated connection.
+    if (!this.service.isConnected())
+      return add ? this.connectToSavePrompt(input) : this.connectPrompt(input);
     const title = resolveTitleByName(titleQuery);
     if (!title)
       return { text: `I couldn't find a title called "${titleQuery}" in the demo catalog. Try asking me to find something first.` };

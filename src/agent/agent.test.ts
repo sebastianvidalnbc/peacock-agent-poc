@@ -481,3 +481,94 @@ describe("Intent + entity routing hardening", () => {
     expect(res.debug?.intent).toBe("open_in_peacock");
   });
 });
+
+/**
+ * Guest Peacock Mode — the MCP optional-auth pattern. "Guest" is simply the
+ * absence of a connected persona (no OAuth), never a silently-created account.
+ * A Guest may use anonymous/public tools but cannot read or mutate any
+ * authenticated Peacock account data.
+ */
+describe("Guest Peacock Mode — access boundary", () => {
+  beforeEach(() => prototypeStore.clearAll());
+
+  // Personal reads that must be gated behind the simulated connection.
+  const personalReads: Array<[string, string]> = [
+    ["What's my subscription?", "get_subscription"],
+    ["What does my plan include?", "get_entitlements"],
+    ["Show me my watchlist", "get_watchlist"],
+    ["What was I watching?", "viewing_history"],
+  ];
+
+  it.each(personalReads)(
+    "guest cannot read authenticated data: %s prompts to connect with no account card",
+    async (prompt) => {
+      const agent = disconnectedAgent();
+      const res = await agent.respond(prompt);
+      // Connect prompt, not the personal artifact.
+      expect(res.card?.kind).toBe("connect");
+      expect(res.actions?.[0].kind).toBe("connect");
+      // No authenticated tool ran and no personal card leaked.
+      expect(res.toolName).toBeUndefined();
+      expect(
+        ["subscription", "entitlements", "watchlist", "account", "continue_watching"].includes(
+          res.card?.kind ?? "",
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it("labels every guest turn as Guest / noauth", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("What's my subscription?");
+    expect(res.access).toEqual({ mode: "noauth", label: "Guest / noauth" });
+  });
+
+  it("labels every connected turn as Connected Peacock / oauth2", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("What's my subscription?");
+    expect(res.access).toEqual({ mode: "oauth2", label: "Connected Peacock / oauth2" });
+  });
+
+  it("guest cannot mutate My Stuff: add uses write-specific copy, preserves intent, and mutates nothing", async () => {
+    const agent = disconnectedAgent();
+    const input = "Add Poker Face to my watchlist";
+    // alex's fixture watchlist is the baseline; a guest attempt must not touch it.
+    const before = [...prototypeStore.getOverlay("alex").watchlist];
+    const res = await agent.respond(input);
+    // Exact write-specific connect copy.
+    expect(res.text).toBe("Connect Peacock to save this to My Stuff.");
+    expect(res.card?.kind).toBe("connect");
+    // The original intent is preserved for auto-resume after connecting.
+    const connect = res.actions?.find((a) => a.kind === "connect");
+    expect(connect?.resumeText).toBe(input);
+    // No watchlist write happened anywhere.
+    expect(res.toolName).toBeUndefined();
+    expect(prototypeStore.getOverlay("alex").watchlist).toEqual(before);
+  });
+
+  it("guest CAN use anonymous tools — catalog search returns results with no connect prompt", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("Find Poker Face");
+    expect(res.toolName).toBe("search_catalog");
+    expect(res.card?.kind).toBe("search");
+    expect(res.card?.kind === "search" ? res.card.data.length : 0).toBeGreaterThan(0);
+    expect(res.access?.mode).toBe("noauth");
+  });
+
+  it("guest CAN use anonymous tools — recommendations run without a connection", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("Something funny");
+    expect(res.toolName).toBe("get_recommendations");
+    expect(res.card?.kind).toBe("discovery");
+  });
+
+  it("does not inject Peacock merchandising into an unrelated recommendation request", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("Something funny");
+    // Neutral cross-service discovery — no connect/open upsell surfaced.
+    const kinds = (res.actions ?? []).map((a) => a.kind);
+    expect(kinds).not.toContain("connect");
+    expect(kinds).not.toContain("open");
+    expect(res.card?.kind).not.toBe("connect");
+  });
+});

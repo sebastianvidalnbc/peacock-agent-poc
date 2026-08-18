@@ -15,6 +15,7 @@ export const getEntitlementsTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: true,
+  authModes: ["oauth2"],
   readOnlyHint: true,
   openWorldHint: false,
   handler: (service) => service.getEntitlements(),
@@ -30,6 +31,9 @@ export const getSupportedCapabilitiesTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  // Anonymous-safe: a Guest sees the capability list (with personal actions
+  // marked as needing a connection); connecting enriches availability context.
+  authModes: ["noauth", "oauth2"],
   readOnlyHint: true,
   openWorldHint: false,
   handler: (service) => service.getSupportedCapabilities(),

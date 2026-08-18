@@ -25,6 +25,14 @@ describe("tool metadata", () => {
     expect(t?.requiresAuth).toBe(false);
     expect(t?.mutates).toBe(false);
   });
+  it("advertises MCP optional-auth authModes on every tool (dual for anonymous, oauth2 for personal)", () => {
+    // Anonymous discovery + playback + catalog tools are dual-mode.
+    expect(getTool("search_catalog")?.authModes).toEqual(["noauth", "oauth2"]);
+    expect(getTool("get_playback_destination")?.authModes).toEqual(["noauth", "oauth2"]);
+    // Personal / mutating tools are oauth2-only.
+    expect(getTool("get_watchlist")?.authModes).toEqual(["oauth2"]);
+    expect(getTool("add_to_watchlist")?.authModes).toEqual(["oauth2"]);
+  });
 });
 
 describe("cross-service discovery tools", () => {

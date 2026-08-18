@@ -112,12 +112,36 @@ It answers "what was I watching?", "where did I leave off?", "continue
 `get_continue_watching`, `get_resume_position`, `get_next_episode`). Nothing here
 mutates viewing state; Resume hands off to the simulated Peacock playback flow.
 
+## Guest mode (optional authentication)
+
+Following OpenAI's optional-authentication MCP pattern, the connector works for a
+**Guest** — anyone with no connected Peacock account. "Guest" is simply the
+absence of a connection (`connectedPersonaId === null`); it is **not** a
+silently-created customer account and never triggers OAuth on its own.
+
+- **Anonymous / public tools work as a Guest:** catalog search, title details,
+  recommendations, cross-service availability, previews, and the public playback
+  destination. These are dual-mode (`noauth` + `oauth2`) — public for Guests,
+  richer once connected.
+- **Personal / account actions require the connection:** subscription,
+  entitlements, watchlist read, viewing history, Continue Watching, and any
+  watchlist write are `oauth2`-only. A Guest asking for them gets the connect
+  prompt and no account data leaks.
+- **Personal writes** prompt *"Connect Peacock to save this to My Stuff."* and
+  preserve the original intent so it auto-resumes after connecting.
+
+Each tool's contract lives in [`src/tools/access.ts`](src/tools/access.ts)
+(`authModes`); the boundary is covered by `src/tools/access.test.ts` and the
+*Guest Peacock Mode* suite in `src/agent/agent.test.ts`.
+
 ## Prototype controls
 
 Connect / switch persona, disconnect, **Reset scenario** (restore fixtures),
 and **Clear all local state**. A **Show tool activity** toggle shows which
 Peacock tool each assistant turn invoked; a **Show OpenAI policy status** toggle
-badges each reply GREEN / YELLOW / RED for stakeholder review.
+badges each reply GREEN / YELLOW / RED for stakeholder review. Either toggle also
+reveals the **Access Inspector** line — `Guest / noauth` or
+`Connected Peacock / oauth2` — for the turn.
 
 ## Product-policy note
 

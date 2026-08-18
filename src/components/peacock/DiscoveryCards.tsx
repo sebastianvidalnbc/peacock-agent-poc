@@ -137,7 +137,7 @@ export function DiscoveryCard({ rows }: { rows: DiscoveryRow[]; connected: boole
       {rows.length === 0 ? (
         <p className="meta">No matching titles across the simulated services.</p>
       ) : (
-        <div className="disc-title-list">
+        <div className={`disc-title-list${rows.length > 1 ? " carousel" : ""}`}>
           {rows.map((r) => (
             <DiscoveryTitleRow key={r.title.contentId} row={r} />
           ))}

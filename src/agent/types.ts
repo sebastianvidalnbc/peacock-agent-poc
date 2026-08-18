@@ -11,6 +11,17 @@ import type {
   ViewingProgress,
 } from "../peacock/types";
 import type { PolicyStatus } from "../policy/policy";
+import type { AuthMode } from "../tools/access";
+
+/**
+ * The Access Inspector descriptor for a turn: the effective MCP auth mode
+ * (Guest vs connected) and its short label. Client-side chrome only — surfaced
+ * alongside the intent/policy inspectors, never part of MCP tool output.
+ */
+export interface AccessInfo {
+  mode: AuthMode;
+  label: string;
+}
 
 /**
  * A cross-service availability row as rendered in the UI: the raw title plus a
@@ -106,6 +117,11 @@ export interface AgentResponse {
   policy?: PolicyStatus;
   /** Governing OpenAI doc identifier for the policy status, when known. */
   policySource?: string;
+  /**
+   * Access Inspector descriptor for this turn (Guest / noauth vs Connected
+   * Peacock / oauth2). Client-side chrome only; never part of MCP tool output.
+   */
+  access?: AccessInfo;
 }
 
 export type ChatRole = "user" | "assistant";
@@ -124,4 +140,6 @@ export interface ChatMessage {
   policy?: PolicyStatus;
   /** Governing OpenAI doc identifier for the policy status, when known. */
   policySource?: string;
+  /** Access Inspector descriptor for this turn (client-side chrome only). */
+  access?: AccessInfo;
 }

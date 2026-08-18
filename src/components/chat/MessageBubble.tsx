@@ -32,21 +32,37 @@ export function MessageBubble({
         )}
         {message.actions && message.actions.length > 0 && (
           <div className="actions">
-            {message.actions.map((a, i) => (
-              <button
-                key={a.id}
-                className={`btn ${i === 0 ? "primary" : "ghost"}`}
-                onClick={() => onAction(a, message.id)}
-              >
-                {a.label}
-              </button>
-            ))}
+            {message.actions.map((a, i) => {
+              // Emphasize at most two actions (primary + secondary) per card,
+              // per OpenAI Plugin UI guidance; any extra actions render as ghost.
+              const emphasis = i === 0 ? "primary" : i === 1 ? "secondary" : "ghost";
+              // Peacock-accent the primary CTA only for Peacock playback handoffs
+              // (open / resume) — never for neutral or informational actions.
+              const accent =
+                i === 0 && (a.kind === "open" || a.kind === "resume") ? " primary-accent" : "";
+              return (
+                <button
+                  key={a.id}
+                  className={`btn ${emphasis}${accent}`}
+                  onClick={() => onAction(a, message.id)}
+                >
+                  {a.label}
+                </button>
+              );
+            })}
           </div>
         )}
         {debug && message.toolName && (
           <div className="tool-chip" aria-label="Tool activity">
             <span className="tool-dot" aria-hidden="true" />
             Peacock · {message.toolName} · Completed
+          </div>
+        )}
+        {(debug || policyMode) && !isUser && message.access && (
+          <div className="access-inspector" aria-label="Access inspector">
+            <span className="ii-item">
+              <span className="ii-key">Access</span> {message.access.label}
+            </span>
           </div>
         )}
         {debug && !isUser && message.debug && (

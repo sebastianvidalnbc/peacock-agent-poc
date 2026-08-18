@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type {
   CatalogTitle,
   NextEpisode,
@@ -29,13 +29,23 @@ function TitleRow({ t }: { t: CatalogTitle }) {
   );
 }
 
+/**
+ * Wrap multi-item rows in a horizontal scroll-snap carousel; a single item
+ * renders as-is. Keeps every row's data and actions intact — layout only.
+ */
+function ItemRail({ count, children }: { count: number; children: ReactNode }) {
+  return <div className={count > 1 ? "carousel" : undefined}>{children}</div>;
+}
+
 export function WatchlistCard({ titles }: { titles: CatalogTitle[] }) {
   return (
     <CardShell title="Your watchlist">
       {titles.length === 0 ? (
         <p className="meta">Nothing here yet. Ask me to add a title.</p>
       ) : (
-        titles.map((t) => <TitleRow key={t.contentId} t={t} />)
+        <ItemRail count={titles.length}>
+          {titles.map((t) => <TitleRow key={t.contentId} t={t} />)}
+        </ItemRail>
       )}
     </CardShell>
   );
@@ -47,7 +57,9 @@ export function SearchCard({ titles }: { titles: CatalogTitle[] }) {
       {titles.length === 0 ? (
         <p className="meta">No matching titles in the demo catalog.</p>
       ) : (
-        titles.map((t) => <TitleRow key={t.contentId} t={t} />)
+        <ItemRail count={titles.length}>
+          {titles.map((t) => <TitleRow key={t.contentId} t={t} />)}
+        </ItemRail>
       )}
     </CardShell>
   );
@@ -260,7 +272,9 @@ export function ContinueWatchingCard({
       {items.length === 0 ? (
         <p className="meta">Nothing in progress right now.</p>
       ) : (
-        items.map((v) => <ProgressRow key={v.contentId} v={v} />)
+        <ItemRail count={items.length}>
+          {items.map((v) => <ProgressRow key={v.contentId} v={v} />)}
+        </ItemRail>
       )}
       {nextEpisode?.hasNext && (
         <p className="meta cw-next">

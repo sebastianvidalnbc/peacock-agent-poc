@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { PeacockService } from "../peacock/PeacockService";
 import type { DiscoveryService } from "../discovery/DiscoveryService";
+import type { AuthMode } from "./access";
 
 /**
  * Which backend a tool runs against. Peacock tools use account-aware behaviour;
@@ -42,6 +43,16 @@ export interface ToolDefinition<I = unknown, O = unknown, T extends ToolTarget =
   requiresConfirmation: boolean;
   /** Whether a connected Peacock persona is required to run this tool. */
   requiresAuth: boolean;
+  /**
+   * MCP optional-auth access modes this tool advertises (see ./access):
+   *  - ["noauth"]: anonymous only (pure public catalog/preview).
+   *  - ["oauth2"]: connected Peacock account required (personal or mutating).
+   *  - ["noauth", "oauth2"]: dual-mode — public results for a Guest, richer /
+   *    account-aware results when connected.
+   * The single source of truth for a tool's auth contract. When omitted,
+   * authModesFor() derives a conservative default from requiresAuth.
+   */
+  authModes?: AuthMode[];
   /**
    * MCP tool annotations (hints). These mirror the Model Context Protocol tool
    * annotations a real server would advertise and are surfaced by the prototype
