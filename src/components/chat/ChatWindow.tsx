@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import type { AssistantAction, ChatMessage } from "../../agent/types";
-import { INITIAL_GREETING, STARTER_PROMPTS } from "../../agent/capabilities";
 import { MessageBubble } from "./MessageBubble";
 import { Composer } from "./Composer";
 
@@ -8,6 +7,7 @@ export function ChatWindow({
   messages,
   pending,
   debug,
+  policyMode,
   previewOpenIds,
   peacockConnected,
   onSend,
@@ -17,6 +17,8 @@ export function ChatWindow({
   messages: ChatMessage[];
   pending: boolean;
   debug: boolean;
+  /** Whether the OpenAI Policy Inspector badges are shown on assistant turns. */
+  policyMode: boolean;
   /** Message ids whose inline title-offer preview is currently shown. */
   previewOpenIds: ReadonlySet<string>;
   /** Whether a Peacock persona is connected (drives the composer tools menu). */
@@ -52,16 +54,10 @@ export function ChatWindow({
         ref={scrollRef}
       >
         {empty ? (
-          <div className="welcome">
-            <h1 className="greeting">{INITIAL_GREETING}</h1>
-            <div className="starters">
-              {STARTER_PROMPTS.map((p) => (
-                <button key={p} className="starter" onClick={() => onSend(p)} disabled={pending}>
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
+          // Neutral empty state: the composer is the only affordance. No
+          // greeting, starter prompts, or capability hints — capabilities are
+          // revealed only after the user expresses an intent.
+          <div className="welcome" aria-hidden="true" />
         ) : (
           <div className="thread">
             {messages.map((m) => (
@@ -69,6 +65,7 @@ export function ChatWindow({
                 key={m.id}
                 message={m}
                 debug={debug}
+                policyMode={policyMode}
                 previewOpen={previewOpenIds.has(m.id)}
                 onAction={onAction}
               />

@@ -95,15 +95,10 @@ button { font: inherit; cursor: pointer; color: inherit; }
   padding: 14px 14px 8px;
   max-width: 720px; margin-inline: auto; width: 100%;
 }
+/* Neutral empty state: no greeting or starter prompts — the composer is the
+   only affordance. The .welcome node is an empty spacer kept for layout. */
 .chat.empty { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 24px; }
-.welcome { width: 100%; max-width: 520px; text-align: center; display: flex; flex-direction: column; gap: 20px; }
-.greeting { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
-.starters { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
-.starter {
-  background: transparent; border: 1px solid var(--border-strong); color: var(--text);
-  border-radius: 14px; padding: 12px 16px; font-size: 15px; text-align: left; min-height: 48px;
-}
-.starter:hover { background: var(--surface); }
+.welcome { width: 100%; max-width: 520px; }
 
 .msg { display: flex; flex-direction: column; }
 .msg.user { align-items: flex-end; }
@@ -134,6 +129,30 @@ button { font: inherit; cursor: pointer; color: inherit; }
   border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px;
 }
 .intent-inspector .ii-key { color: var(--peacock); font-weight: 600; margin-right: 4px; }
+
+/* ---- OpenAI Policy Inspector badge (client-side chrome only) ---- */
+.policy-badge {
+  display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+  margin-top: 4px; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid var(--border);
+}
+.policy-dot { width: 7px; height: 7px; border-radius: 50%; }
+.policy-green { color: #0a7d2b; background: rgba(16, 163, 74, 0.10); border-color: rgba(16, 163, 74, 0.35); }
+.policy-green .policy-dot { background: #10a34a; }
+.policy-yellow { color: #8a5a00; background: rgba(214, 158, 46, 0.12); border-color: rgba(214, 158, 46, 0.40); }
+.policy-yellow .policy-dot { background: #d69e2e; }
+.policy-red { color: #b42318; background: rgba(220, 38, 38, 0.10); border-color: rgba(220, 38, 38, 0.35); }
+.policy-red .policy-dot { background: #dc2626; }
+
+/* ---- Continue Watching artifact rows ---- */
+.cw-row { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.cw-row:last-of-type { border-bottom: none; }
+.cw-row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.cw-title { font-weight: 600; }
+.cw-bar { margin-top: 6px; }
+.cw-next { margin-top: 8px; color: var(--peacock); font-weight: 600; }
 
 .typing { display: inline-flex; gap: 5px; align-items: center; padding: 6px 2px; }
 .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite; }
