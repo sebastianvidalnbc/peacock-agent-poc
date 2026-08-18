@@ -28,6 +28,12 @@ body {
   color: var(--text);
   font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* The app shell owns all scrolling (its .chat region). Prevent the document
+     behind the shell from becoming a second scroll container on mobile — this
+     stops iOS Safari from scrolling the whole page (and hiding the composer)
+     when the composer is focused or scrollTo is called. */
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 button { font: inherit; cursor: pointer; color: inherit; }
@@ -37,7 +43,11 @@ button { font: inherit; cursor: pointer; color: inherit; }
 .app {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  /* Baseline is 100dvh; on iOS the useVisualViewport hook overrides this with
+     the true visible height (accounting for the software keyboard) so the
+     bottom-docked composer stays above the keyboard. The document itself never
+     scrolls — only the .chat region does. */
+  height: var(--app-viewport-height, 100dvh);
   width: min(100%, 440px);
   margin-inline: auto;
   background: var(--app-bg);
@@ -78,11 +88,21 @@ button { font: inherit; cursor: pointer; color: inherit; }
   padding: 10px 16px; font-size: 15px; min-height: 44px;
 }
 .btn.primary { background: #fff; color: var(--on-primary); border-color: transparent; font-weight: 600; }
+/* Secondary emphasis: quieter than primary, stronger than ghost. At most one
+   primary + one secondary are emphasized per card (extra actions use ghost). */
+.btn.secondary { background: var(--surface-2); border-color: var(--border-strong); font-weight: 500; }
 .btn.ghost { background: transparent; border-color: var(--border-strong); }
 .btn.block { width: 100%; justify-content: center; display: inline-flex; align-items: center; }
 .btn:hover { background: var(--surface-2); }
 .btn.primary:hover { background: #ececec; }
+.btn.secondary:hover { background: var(--surface); }
 .btn.ghost:hover { background: var(--surface); }
+/* Peacock-accented primary CTA — used only for Peacock playback handoffs
+   (Open / Resume). The brand gradient stays confined to Peacock artifacts. */
+.btn.primary.primary-accent {
+  background: var(--peacock); color: #fff; border-color: transparent;
+}
+.btn.primary.primary-accent:hover { filter: brightness(1.06); background: var(--peacock); }
 
 /* ---- Conversation ---- */
 .chat {
@@ -129,6 +149,17 @@ button { font: inherit; cursor: pointer; color: inherit; }
   border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px;
 }
 .intent-inspector .ii-key { color: var(--peacock); font-weight: 600; margin-right: 4px; }
+
+/* ---- Access Inspector (Guest / noauth vs Connected Peacock / oauth2) ---- */
+.access-inspector {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px;
+  font-size: 11px; color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.access-inspector .ii-item {
+  border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px;
+}
+.access-inspector .ii-key { color: var(--peacock); font-weight: 600; margin-right: 4px; }
 
 /* ---- OpenAI Policy Inspector badge (client-side chrome only) ---- */
 .policy-badge {
@@ -208,6 +239,31 @@ button { font: inherit; cursor: pointer; color: inherit; }
 .disc-title-list { display: flex; flex-direction: column; }
 .disc-title { display: flex; flex-direction: column; gap: 6px; padding: 11px 0; }
 .disc-title + .disc-title { border-top: 1px solid var(--border); }
+
+/* ---- Multi-item carousel (horizontal scroll-snap rail) ----
+   Applied only when a card holds more than one item. Turns the default
+   vertical stack into a swipeable horizontal rail; each row snaps into view.
+   Preserves all row content — layout only. */
+.carousel {
+  display: flex; flex-direction: row; gap: 10px;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px; margin: 0 -2px;
+  scrollbar-width: thin;
+}
+.carousel > * {
+  flex: 0 0 78%; min-width: 78%; max-width: 78%;
+  scroll-snap-align: start;
+  box-sizing: border-box;
+}
+/* Inside a rail, rows are self-contained cells rather than divided list items. */
+.carousel > .title-row,
+.carousel > .cw-row,
+.carousel > .disc-title {
+  border: 1px solid var(--border); border-top: 1px solid var(--border);
+  border-radius: 12px; padding: 11px 12px;
+}
 .disc-title-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .cap { display: flex; gap: 10px; align-items: flex-start; }
 .cap .mark { flex: none; }
@@ -226,11 +282,27 @@ button { font: inherit; cursor: pointer; color: inherit; }
 .preview-time { flex: none; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---- Composer ---- */
+/* Docked to the bottom of the visible app viewport. Because .app height tracks
+   the visual viewport, this stays directly above the iOS keyboard. */
+.composer-wrap { position: relative; flex: none; }
 .composer {
   position: relative;
   padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
   background: var(--app-bg);
 }
+/* Subtle "Jump to latest" control — shown only when the user has scrolled far
+   up from the newest turn. Floats just above the composer. */
+.jump-latest {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(100% + 6px); z-index: 5;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 999px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong);
+  font-size: 13px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.jump-latest:hover { background: var(--surface-2); }
+.jump-latest svg { display: block; }
 .composer::before {
   content: ""; position: absolute; left: 0; right: 0; top: -28px; height: 28px;
   background: linear-gradient(to top, var(--app-bg), transparent); pointer-events: none;

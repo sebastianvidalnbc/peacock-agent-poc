@@ -8,6 +8,7 @@ import { ChatWindow } from "../components/chat/ChatWindow";
 import { PeacockAuthDialog } from "../components/prototype/PeacockAuthDialog";
 import { SettingsPanel } from "../components/prototype/SettingsPanel";
 import { AppBar } from "./AppBar";
+import { useVisualViewport } from "../hooks/useVisualViewport";
 
 /** Persona connected by the simulated authorization flow. */
 const DEFAULT_PERSONA_ID = "alex";
@@ -21,6 +22,10 @@ function newId(): string {
 
 export function App() {
   const { connectedPersonaId } = usePrototypeStore();
+
+  // Keep the app shell sized to the visible viewport so the composer stays
+  // above the iOS software keyboard (drives --app-viewport-height via CSS).
+  useVisualViewport();
 
   // One stable agent for the session; reads live connection from the store.
   const agentRef = useRef<Agent | null>(null);
@@ -68,6 +73,7 @@ export function App() {
           debug: res.debug,
           policy: res.policy,
           policySource: res.policySource,
+          access: res.access,
         },
       ]);
     } finally {
@@ -119,6 +125,7 @@ export function App() {
           debug: res.debug,
           policy: res.policy,
           policySource: res.policySource,
+          access: res.access,
         },
       ]);
     } finally {
