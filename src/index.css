@@ -21,19 +21,22 @@
 }
 
 * { box-sizing: border-box; }
-html, body, #root { height: 100%; }
+/* Lock the document itself: it must never become a scroll container. Only the
+   conversation (.chat) scrolls. This — together with the fixed .app shell and
+   the focus-scroll neutralizer in useVisualViewport — stops iOS Safari from
+   translating the whole page upward when the keyboard opens. */
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
 body {
   margin: 0;
   background: var(--page-bg);
   color: var(--text);
   font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
-  /* The app shell owns all scrolling (its .chat region). Prevent the document
-     behind the shell from becoming a second scroll container on mobile — this
-     stops iOS Safari from scrolling the whole page (and hiding the composer)
-     when the composer is focused or scrollTo is called. */
-  overflow: hidden;
-  overscroll-behavior: none;
 }
 
 button { font: inherit; cursor: pointer; color: inherit; }
@@ -41,17 +44,21 @@ button { font: inherit; cursor: pointer; color: inherit; }
 
 /* ---- Mobile-first phone frame, centred on large screens ---- */
 .app {
+  /* Fixed to the visible viewport origin so iOS Safari's focus-scroll cannot
+     drag the header off the top of the screen. Height tracks the *visual*
+     viewport (set by useVisualViewport) and falls back to 100dvh where the API
+     is unavailable — so when the keyboard opens the shell shrinks in place, the
+     header stays anchored, the conversation shrinks, and the composer (the last
+     flex child) sits directly above the keyboard. The document never scrolls. */
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  /* Baseline is 100dvh; on iOS the useVisualViewport hook overrides this with
-     the true visible height (accounting for the software keyboard) so the
-     bottom-docked composer stays above the keyboard. The document itself never
-     scrolls — only the .chat region does. */
-  height: var(--app-viewport-height, 100dvh);
+  height: var(--visual-viewport-height, 100dvh);
   width: min(100%, 440px);
-  margin-inline: auto;
   background: var(--app-bg);
-  position: relative;
   overflow: hidden;
 }
 @media (min-width: 480px) {

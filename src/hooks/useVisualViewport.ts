@@ -1,38 +1,42 @@
 import { useEffect } from "react";
 
 /**
- * Tracks the mobile *visual* viewport (the area not covered by the iOS software
- * keyboard or Safari's dynamic browser chrome) and exposes it to CSS as:
+ * Anchors the app to the mobile *visual* viewport (the area not covered by the
+ * iOS software keyboard). It does two things:
  *
- *   --app-viewport-height : the height the app shell should occupy right now
- *   --keyboard-offset     : how much the keyboard currently intrudes (px)
+ *   1. Exposes the visible height to CSS as `--visual-viewport-height`, so the
+ *      fixed app shell can shrink when the keyboard opens.
+ *   2. Neutralizes Safari's focus-scroll: when a textarea is focused iOS scrolls
+ *      the *layout* viewport upward to reveal the field, which drags a fixed
+ *      shell (and its header) off the top of the screen. We reset the window
+ *      scroll back to the origin so the shell stays pinned to the phone's top.
  *
- * Why: `100dvh` tracks the *layout* viewport, which on iOS Safari does not
- * shrink when the keyboard opens — so a bottom-docked composer ends up behind
- * the keyboard. `window.visualViewport` does report the keyboard, so we drive
- * the shell height from it and let CSS fall back to `100dvh` when the API is
- * absent (desktop, older browsers). This never scrolls the document.
+ * Why height (not `offsetTop` translate): `100dvh` tracks the layout viewport,
+ * which on iOS does not shrink for the keyboard. `visualViewport.height` does.
+ * We intentionally do NOT translate the app by `offsetTop` — the shell is
+ * `position: fixed; inset: 0`, so it must stay at the viewport origin; the only
+ * use of the layout shift is to detect and undo it. Falls back to CSS `100dvh`
+ * where `visualViewport` is unavailable (desktop / older browsers).
  */
 export function useVisualViewport(): void {
   useEffect(() => {
     const vv = window.visualViewport;
     const root = document.documentElement;
 
-    // No visualViewport (desktop / unsupported): leave the CSS fallback of
-    // 100dvh in place and do nothing.
+    // No visualViewport (desktop / unsupported): keep the CSS 100dvh fallback.
     if (!vv) return;
 
     let raf = 0;
     const apply = () => {
       raf = 0;
-      // Visible height = the visual viewport height. offsetTop accounts for the
-      // page being pushed up when the keyboard opens on some iOS versions.
-      const height = vv.height;
-      // Keyboard intrusion relative to the layout viewport. Clamp to >= 0 so a
-      // small rounding negative never adds phantom space.
-      const keyboard = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      root.style.setProperty("--app-viewport-height", `${Math.round(height)}px`);
-      root.style.setProperty("--keyboard-offset", `${Math.round(keyboard)}px`);
+      // Drive the fixed shell's height from the visible viewport height only.
+      root.style.setProperty("--visual-viewport-height", `${Math.round(vv.height)}px`);
+
+      // Undo Safari's focus-scroll so the fixed shell (and header) stay anchored
+      // to the top of the visible viewport instead of being pushed off-screen.
+      // Only correct an actual upward shift; never fight the conversation's own
+      // internal scroll (that lives on .chat, not the window).
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
     };
 
     // Coalesce bursty resize/scroll events (keyboard animation) into one paint.
@@ -50,8 +54,7 @@ export function useVisualViewport(): void {
       vv.removeEventListener("resize", schedule);
       vv.removeEventListener("scroll", schedule);
       // Restore the CSS fallback so nothing is left pinned to a stale height.
-      root.style.removeProperty("--app-viewport-height");
-      root.style.removeProperty("--keyboard-offset");
+      root.style.removeProperty("--visual-viewport-height");
     };
   }, []);
 }
