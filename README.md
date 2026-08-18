@@ -134,6 +134,32 @@ Each tool's contract lives in [`src/tools/access.ts`](src/tools/access.ts)
 (`authModes`); the boundary is covered by `src/tools/access.test.ts` and the
 *Guest Peacock Mode* suite in `src/agent/agent.test.ts`.
 
+## Titles, context & explicit @PeacockTV invocation
+
+- **Catalog** — 70+ titles mixing recognisable Peacock-relevant names (e.g. *The
+  Traitors*, *Poker Face*, *The Office*) with synthetic demo entries. Every
+  synopsis is a synthetic placeholder, not an official description.
+- **Alias + fuzzy resolution** — a single reusable layer resolves colloquial
+  names (`Traitors → The Traitors`, `Love Island → Love Island USA`, `Brooklyn
+  99 → Brooklyn Nine-Nine`), ignores casing/punctuation, and does a
+  **conservative** typo-tolerant fuzzy pass (`Poker Fase → Poker Face`) that
+  won't resolve unrelated words. See [`src/data/catalog.ts`](src/data/catalog.ts).
+- **Referential context** — when results are shown, a selection such as *"Poker
+  Face sounds good"*, *"that one"*, or *"the second one"* becomes the
+  `lastReferencedTitle`, so follow-ups (*"tell me more"*, *"can I preview it?"*,
+  *"where can I watch it?"*, *"add it to my watchlist"*) resolve without
+  repeating the title. Clarification is asked only when context is genuinely
+  missing — not the generic unsupported reply.
+- **Explicit invocation** — a turn beginning with **`@PeacockTV`** (or
+  **`@Peacock`**) normalises to `explicitApp: "peacock"` and routes public
+  discovery (search, recommendations, preview, open destination) **through
+  Peacock** rather than provider-neutral discovery. It **never** implies auth:
+  Guest capabilities stay available, and a personal action (e.g. *"@PeacockTV
+  add Poker Face to my watchlist"*) still prompts Connect and auto-resumes. The
+  composer's **`@`** picker inserts the Peacock token; debug mode shows
+  `Invocation: explicit Peacock | implicit`. `DiscoveryService` (provider-neutral)
+  and `PeacockService` (Peacock capabilities) remain separate.
+
 ## Prototype controls
 
 Connect / switch persona, disconnect, **Reset scenario** (restore fixtures),

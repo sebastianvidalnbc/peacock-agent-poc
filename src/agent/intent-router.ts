@@ -5,8 +5,19 @@
  */
 
 import { extractTitleFromText, extractProvider, type KnownProvider } from "../data/catalog";
+import type { TitleAvailability } from "../peacock/types";
 
-export type Intent =
+/**
+ * The routed intent for a turn. The discriminated union below (`IntentBody`)
+ * carries the kind-specific fields; every variant additionally carries an
+ * optional `explicitApp` set when the turn began with an explicit app mention
+ * (`@PeacockTV`). The agent uses it to (a) route public discovery through
+ * Peacock capabilities rather than provider-neutral discovery, and (b) surface
+ * "Invocation: explicit Peacock" in the debug trace. It never implies auth.
+ */
+export type Intent = IntentBody & { explicitApp?: ExplicitApp };
+
+type IntentBody =
   | { kind: "capabilities" }
   | { kind: "add_to_watchlist"; titleQuery: string }
   | { kind: "remove_from_watchlist"; titleQuery: string }
@@ -72,6 +83,13 @@ export type Intent =
   | { kind: "open_in_peacock"; contentId?: string }
   /** "Tell me more about X" or, via context, "Tell me more about it". */
   | { kind: "title_details"; contentId?: string }
+  /**
+   * The user picks a title from what was just shown — by name ("Poker Face
+   * sounds good"), by ordinal ("the second one"), or by bare pronoun ("that
+   * one"). The agent promotes it to the referenced title and confirms. `ordinal`
+   * is 1-based; when both are absent the agent uses the last single result.
+   */
+  | { kind: "select_title"; contentId?: string; ordinal?: number }
   /** A discovery/recommendation ask. `criteria` is a resolved genre or "". */
   | { kind: "recommend"; criteria: string }
   /** An explicit catalog lookup with an extracted search term. */
@@ -85,6 +103,35 @@ export type Intent =
   | { kind: "unknown" };
 
 const has = (t: string, words: string[]) => words.some((w) => t.includes(w));
+
+/**
+ * An explicit app invocation parsed from a leading mention token. `@PeacockTV`
+ * / `@Peacock` (any casing, optional following space) normalise to
+ * `explicitApp: "peacock"`; the mention is stripped before intent matching so
+ * the rest of the request routes normally, but through Peacock capabilities.
+ * Explicit invocation never implies the account is authenticated — personal
+ * actions still require a connection.
+ */
+export type ExplicitApp = "peacock";
+
+export interface ParsedInvocation {
+  explicitApp?: ExplicitApp;
+  /** The request text with any leading app-mention token removed. */
+  text: string;
+}
+
+const PEACOCK_MENTION = /^\s*@peacock(?:tv)?\b[\s,:-]*/i;
+
+/**
+ * Detect and strip a leading `@PeacockTV` / `@Peacock` mention. Only a leading
+ * mention counts as an explicit invocation; a mid-sentence "@peacock" is left
+ * untouched so it can't accidentally reroute a normal request.
+ */
+export function parseInvocation(input: string): ParsedInvocation {
+  const m = input.match(PEACOCK_MENTION);
+  if (m) return { explicitApp: "peacock", text: input.slice(m[0].length) };
+  return { text: input };
+}
 
 /**
  * Normalise a raw user turn once, before any intent matching. Lowercases,
@@ -106,6 +153,52 @@ export function normalize(input: string): string {
 /** True when the text refers to a title only by pronoun ("it", "that", "this"). */
 function refersByPronoun(t: string): boolean {
   return /\b(it|that|this|the show|the series|the title|the movie|the film)\b/.test(t);
+}
+
+/** Words that mark a positive selection/approval of a just-shown option. */
+const APPROVAL =
+  /\b(sounds (good|great|fun|perfect)|looks (good|great)|i like|i'?ll (watch|take|go with|do)|let'?s (do|go with|watch|try)|go with|i'?ll go with|pick|choose|i choose|that works|perfect|great choice|yeah|yes|sure)\b/;
+
+/** Map ordinal words / digits to a 1-based index ("the second one" → 2). */
+const ORDINALS: Record<string, number> = {
+  first: 1, "1st": 1, one: 1,
+  second: 2, "2nd": 2, two: 2,
+  third: 3, "3rd": 3, three: 3,
+  fourth: 4, "4th": 4, four: 4,
+  fifth: 5, "5th": 5, five: 5,
+  sixth: 6, "6th": 6, six: 6,
+  last: -1,
+};
+
+/** Detect "the second one" / "that one" style ordinal picks. Returns a 1-based
+ * index, -1 for "the last one", or undefined when no ordinal pick is present. */
+function detectOrdinal(t: string): number | undefined {
+  const m = t.match(/\bthe\s+(first|second|third|fourth|fifth|sixth|last|1st|2nd|3rd|4th|5th|6th)\b/);
+  if (m) return ORDINALS[m[1]];
+  if (/\bthe\s+last\s+(one|option|pick)\b/.test(t)) return -1;
+  return undefined;
+}
+
+/**
+ * Detect a selection of a just-shown result. Three shapes are accepted, in order
+ * of specificity: a named title with approval phrasing ("Poker Face sounds
+ * good", "I like Poker Face", "let's do Poker Face"); an ordinal pick ("the
+ * second one", "the last one"); or a bare pronoun approval ("that one", "that
+ * works", "yes"/"sure" on their own). Deliberately conservative: a named title
+ * alone (no approval) is NOT a selection, so "Poker Face" still routes to a
+ * watch offer, and action verbs (watch/preview/open/add) are handled elsewhere.
+ */
+function detectSelection(t: string, named: TitleAvailability | undefined): IntentBody | undefined {
+  const approves = APPROVAL.test(t);
+  const hasAction = has(t, ["preview", "trailer", "open", "watch", "stream", "play", "add", "put", "save", "remove", "where", "more about", "tell me more"]);
+  if (hasAction) return undefined;
+  if (named && approves) return { kind: "select_title", contentId: named.contentId };
+  const ordinal = detectOrdinal(t);
+  if (ordinal !== undefined) return { kind: "select_title", ordinal };
+  // Bare pronoun/approval with no title: "that one", "that works", "yes"/"sure".
+  if (/\b(that|this) (one|works|sounds good|looks good)\b/.test(t)) return { kind: "select_title" };
+  if (approves && /\b(that|this|it)\b/.test(t)) return { kind: "select_title" };
+  return undefined;
 }
 
 /**
@@ -141,9 +234,13 @@ function asksAvailability(t: string): boolean {
   return false;
 }
 
-/** Strip a leading verb and trailing "to/on my watchlist" from an add/remove. */
+/** Strip a leading verb and trailing "to/on my watchlist" from an add/remove.
+ * A leading politeness lead ("can you", "could you", "please", "would you") is
+ * removed first so "can you add it to my watchlist" yields the pronoun "it",
+ * which the agent then resolves from conversation context. */
 function extractTitle(raw: string): string {
   return raw
+    .replace(/^\s*(can|could|would|will)\s+you\s+(please\s+)?/i, "")
     .replace(/^\s*(please\s+)?(add|put|save|remove|delete|drop|take)\s+(off\s+)?/i, "")
     .replace(/\s+(to|on|from|off)\s+(my\s+)?(watch\s?list|list|queue)\s*[.!?]*$/i, "")
     .replace(/\s+(to|on|from)\s+(my\s+)?(watch\s?list|list|queue)/i, "")
@@ -220,7 +317,41 @@ export function extractSearchQuery(input: string): string {
   return cleaned;
 }
 
+/**
+ * Route a raw user turn to an intent. First strips any leading `@PeacockTV`
+ * mention (recording it as an explicit invocation), routes the remaining text,
+ * then stamps the invocation onto the result. For an explicit Peacock
+ * invocation a bare title ("@PeacockTV The Traitors") is treated as a Peacock
+ * catalog lookup rather than falling through to the generic reply, so explicit
+ * discovery always reaches Peacock capabilities.
+ */
 export function routeIntent(input: string): Intent {
+  const { explicitApp, text } = parseInvocation(input);
+  const body = routeIntentBody(text);
+  const intent: Intent = explicitApp ? explicitAppRoute(body, text) : body;
+  if (explicitApp) intent.explicitApp = explicitApp;
+  return intent;
+}
+
+/**
+ * Adjust a routed intent for an explicit Peacock invocation. Public discovery
+ * that came back generic (unknown / clarification) but names or fuzzily matches
+ * a title becomes a Peacock catalog search, and a bare mention with no further
+ * request lists Peacock capabilities. Everything else keeps its natural intent
+ * (which the agent will route through Peacock because explicitApp is set).
+ */
+function explicitAppRoute(body: IntentBody, text: string): IntentBody {
+  if (body.kind === "unknown" || body.kind === "needs_title_clarification") {
+    const named = extractTitleFromText(text);
+    if (named) return { kind: "search_catalog", query: named.title };
+    const stripped = text.trim();
+    if (stripped) return { kind: "search_catalog", query: extractSearchQuery(stripped) };
+    return { kind: "capabilities" };
+  }
+  return body;
+}
+
+function routeIntentBody(input: string): IntentBody {
   // Normalise once for all keyword/phrase matching. Title extraction still runs
   // against the raw `input` so casing/spacing inside a title never matters.
   const t = normalize(input);
@@ -248,6 +379,15 @@ export function routeIntent(input: string): Intent {
   // follow-ups ("open it", "preview it") refer to the current title by pronoun
   // and are resolved from conversation context by the agent (contentId omitted).
   const named = extractTitleFromText(input);
+
+  // Selection of a just-shown result: "Poker Face sounds good", "I like Poker
+  // Face", "Let's do Poker Face", "that one", "the second one". This is a
+  // choice, not an action verb (watch/preview/open/add handled later), so it is
+  // only matched for approval/ordinal phrasing to avoid hijacking real requests.
+  {
+    const sel = detectSelection(t, named);
+    if (sel) return sel;
+  }
 
   // "Tell me more about it / about X" — title details.
   if (/\b(tell me more|more (info|information|details)|more about|what's it about|whats it about)\b/.test(t)) {
@@ -327,7 +467,12 @@ export function routeIntent(input: string): Intent {
     return { kind: "preview_title" };
   }
 
-  if (/^(please\s+)?(add|put|save)\b/i.test(t) && (has(t, ["watchlist", "watch list", "list", "queue"]) || /^(add|put|save)\s+\w/i.test(t)))
+  // Add-to-watchlist: either a leading add verb, or an "add … to (my) watchlist"
+  // phrasing anywhere in the turn (so "can you add it to my watchlist?" counts).
+  if (
+    (/^(please\s+)?(add|put|save)\b/i.test(t) && (has(t, ["watchlist", "watch list", "list", "queue"]) || /^(add|put|save)\s+\w/i.test(t))) ||
+    (/\b(add|put|save)\b/.test(t) && has(t, ["watchlist", "watch list", "my list", "my queue"]))
+  )
     return { kind: "add_to_watchlist", titleQuery: extractTitle(input) };
 
   if (has(t, ["remove", "delete", "take off", "drop", "get rid of"]) && has(t, ["watchlist", "watch list", "list", "queue"]))

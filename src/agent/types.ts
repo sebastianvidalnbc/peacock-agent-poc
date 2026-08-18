@@ -96,6 +96,11 @@ export interface AssistantAction {
  */
 export interface DebugTrace {
   intent: string;
+  /**
+   * How the turn was invoked: "explicit Peacock" when the user began with an
+   * `@PeacockTV` mention, otherwise "implicit". Mirrors the brief's debug lines.
+   */
+  invocation: "explicit Peacock" | "implicit";
   title?: string;
   provider?: string;
   tool?: string;

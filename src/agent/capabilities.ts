@@ -20,6 +20,8 @@ export const THINGS_TO_TRY: string[] = [
   "Help me with my Peacock subscription",
   "What does my Peacock plan include?",
   "I want to watch Love Island USA",
+  "@PeacockTV find The Traitors",
+  "@PeacockTV recommend something funny",
 ];
 
 /** Shown only when the user makes a request this prototype can't handle yet. */

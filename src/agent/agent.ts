@@ -94,7 +94,10 @@ export class Agent {
    * mode is on; it never affects user-facing copy.
    */
   private traceFor(intent: Intent, res: AgentResponse): DebugTrace {
-    const trace: DebugTrace = { intent: intent.kind };
+    const trace: DebugTrace = {
+      intent: intent.kind,
+      invocation: intent.explicitApp === "peacock" ? "explicit Peacock" : "implicit",
+    };
     const contentId =
       "contentId" in intent && intent.contentId
         ? intent.contentId
@@ -274,8 +277,10 @@ export class Agent {
         return this.handleOpenInPeacock(intent.contentId, input);
       case "title_details":
         return this.handleTitleDetails(intent.contentId);
+      case "select_title":
+        return this.handleSelectTitle(intent.contentId, intent.ordinal);
       case "recommend":
-        return this.handleRecommend(intent.criteria);
+        return this.handleRecommend(intent.criteria, intent.explicitApp === "peacock");
       case "search_catalog":
         return this.handleSearch(intent.query.trim());
       case "commerce_prohibited":
@@ -312,8 +317,13 @@ export class Agent {
    * waiting for it. Recommendations are provider-neutral by default — they span
    * every simulated service and only highlight Peacock rows the connected
    * account already covers.
+   *
+   * When `explicitPeacock` is set (an `@PeacockTV` invocation), the candidate set
+   * still comes from the provider-neutral DiscoveryService (keeping the two
+   * services separate) but is filtered to titles Peacock carries, so an explicit
+   * Peacock recommendation stays within Peacock. This never implies auth.
    */
-  private async handleRecommend(criteria: string): Promise<AgentResponse> {
+  private async handleRecommend(criteria: string, explicitPeacock = false): Promise<AgentResponse> {
     if (!criteria) {
       this.ctx.setAwaitingRecommendCriteria(true);
       return {
@@ -321,13 +331,17 @@ export class Agent {
       };
     }
     this.ctx.setAwaitingRecommendCriteria(false);
-    const data = await runTool<TitleAvailability[]>(this.svc, "get_recommendations", { genre: criteria });
+    const all = await runTool<TitleAvailability[]>(this.svc, "get_recommendations", { genre: criteria });
+    const data = explicitPeacock ? all.filter((t) => this.isOnPeacock(t)) : all;
     this.ctx.setLastDiscovery(data.map((t) => t.contentId));
+    this.ctx.setLastResults(data.map((t) => t.contentId));
     if (data.length === 1) this.ctx.setLastTitle(data[0].contentId);
     const connected = this.service.isConnected();
     if (!data.length) {
       return {
-        text: `I couldn't find any ${criteria} titles across the simulated services. Want to try a different mood like comedy or drama?`,
+        text: explicitPeacock
+          ? `I couldn't find any ${criteria} titles on Peacock in this demo. Want me to look across all services instead?`
+          : `I couldn't find any ${criteria} titles across the simulated services. Want to try a different mood like comedy or drama?`,
         card: { kind: "discovery", rows: [], connected },
         toolName: "get_recommendations",
       };
@@ -337,8 +351,11 @@ export class Agent {
     const tail = connected && ownedCount
       ? ` ${ownedCount} of ${ownedCount === 1 ? "them is" : "these are"} on Peacock, which your account already covers.`
       : "";
+    const lead = explicitPeacock
+      ? `Here ${data.length === 1 ? "is a" : "are some"} ${criteria} pick${data.length === 1 ? "" : "s"} on Peacock you might enjoy:${tail}`
+      : `Here ${data.length === 1 ? "is a" : "are some"} ${criteria} pick${data.length === 1 ? "" : "s"} across services you might enjoy:${tail}`;
     return {
-      text: `Here ${data.length === 1 ? "is a" : "are some"} ${criteria} pick${data.length === 1 ? "" : "s"} across services you might enjoy:${tail}`,
+      text: lead,
       card: { kind: "discovery", rows, connected },
       toolName: "get_recommendations",
     };
@@ -348,6 +365,7 @@ export class Agent {
   private async handleSearch(query: string): Promise<AgentResponse> {
     this.ctx.setAwaitingRecommendCriteria(false);
     const data = await runTool<CatalogTitle[]>(this.service, "search_catalog", { query });
+    this.ctx.setLastResults(data.map((t) => t.contentId));
     if (data.length === 1) this.ctx.setLastTitle(data[0].contentId);
     if (!data.length) {
       return {
@@ -488,7 +506,7 @@ export class Agent {
     // and auto-resumes after the simulated connection.
     if (!this.service.isConnected())
       return add ? this.connectToSavePrompt(input) : this.connectPrompt(input);
-    const title = resolveTitleByName(titleQuery);
+    const title = this.resolveWatchlistTitle(titleQuery);
     if (!title)
       return { text: `I couldn't find a title called "${titleQuery}" in the demo catalog. Try asking me to find something first.` };
     const before = await runTool<CatalogTitle[]>(this.service, "get_watchlist");
@@ -504,6 +522,23 @@ export class Agent {
         ? `Removed ${title.title} from your watchlist.`
         : `${title.title} wasn't on your watchlist.`;
     return { text, card: { kind: "watchlist", data: list }, toolName: tool };
+  }
+
+  /**
+   * Resolve the title for a watchlist write. A concrete name resolves via the
+   * catalog (exact/alias/fuzzy). A bare pronoun ("it", "that one") or an empty
+   * query falls back to the last referenced title, so "add it to my watchlist"
+   * works after the user has just discussed or selected a title.
+   */
+  private resolveWatchlistTitle(titleQuery: string): CatalogTitle | undefined {
+    const q = titleQuery.trim().toLowerCase();
+    const pronounOnly = q === "" || /^(it|that|this|that one|this one|the show|the series|the movie|the film|the title)$/.test(q);
+    if (!pronounOnly) {
+      const byName = resolveTitleByName(titleQuery);
+      if (byName) return byName;
+    }
+    const last = this.ctx.getLastReferencedTitle();
+    return last ? findTitleById(last) : undefined;
   }
 
   /**
@@ -684,6 +719,7 @@ export class Agent {
   private async handleDiscover(query: string): Promise<AgentResponse> {
     const data = await runTool<TitleAvailability[]>(this.svc, "search_across_services", { query });
     this.ctx.setLastDiscovery(data.map((t) => t.contentId));
+    this.ctx.setLastResults(data.map((t) => t.contentId));
     if (data.length === 1) this.ctx.setLastTitle(data[0].contentId);
     const connected = this.service.isConnected();
     if (!data.length) {
@@ -804,6 +840,44 @@ export class Agent {
       card: { kind: "title", data: title },
       toolName: "get_title_details",
     };
+  }
+
+  /**
+   * The user picked a title from what was just shown — by name, by ordinal, or
+   * by pronoun. Resolve it to a concrete title, promote it to the referenced
+   * title so subsequent follow-ups ("add it to my watchlist", "preview it")
+   * work, and confirm with a short details card. When nothing can be resolved
+   * (no prior results), ask which title they mean rather than guessing.
+   */
+  private async handleSelectTitle(contentId?: string, ordinal?: number): Promise<AgentResponse> {
+    const id = this.resolveSelection(contentId, ordinal);
+    if (!id)
+      return { text: "Which one would you like? Tell me the title and I'll pull it up." };
+    const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId: id });
+    this.ctx.setLastTitle(title.contentId);
+    return {
+      text: `Good pick — here's ${title.title}. Want a preview, to add it to your watchlist, or to open it in Peacock?`,
+      card: { kind: "title", data: title },
+      toolName: "get_title_details",
+    };
+  }
+
+  /**
+   * Resolve a selection to a contentId. Preference order: an explicitly named
+   * title; then an ordinal into the last shown results (1-based, -1 = last);
+   * then the single last result if there was exactly one; then the last
+   * referenced title. Returns null when nothing resolves.
+   */
+  private resolveSelection(contentId?: string, ordinal?: number): string | null {
+    if (contentId) return contentId;
+    const results = this.ctx.getLastResults();
+    if (ordinal !== undefined && results.length) {
+      const idx = ordinal === -1 ? results.length - 1 : ordinal - 1;
+      if (idx >= 0 && idx < results.length) return results[idx];
+      return null;
+    }
+    if (results.length === 1) return results[0];
+    return this.ctx.getLastTitle();
   }
 
   // --- Continue Watching / resume / viewing history (GREEN account reads) ---

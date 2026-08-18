@@ -9,9 +9,11 @@ import type {
 
 /**
  * Illustrative demo catalog. Synopses are synthetic placeholders written for
- * the prototype and are not official descriptions. "Poker Face" is included so
- * the sample "add to watchlist" flow works with a recognisable title; the
- * remaining entries use obviously synthetic demo names.
+ * the prototype and are not official descriptions. It mixes recognisable,
+ * Peacock-relevant title names (so the assistant can be exercised with familiar
+ * prompts like "The Traitors" or "Poker Face") with obviously synthetic demo
+ * names. All synopses, identifiers, artwork refs, and deep-link refs are
+ * mock/prototype values regardless of how well-known the title name is.
  *
  * Phase 2B: every title carries an `availability` array describing which
  * (simulated) streaming services offer it, so the assistant can answer
@@ -49,8 +51,15 @@ function link(provider: StreamingProvider, contentId: string): string {
 
 /**
  * Compact factory for the expanded demo catalog. `on` lists the providers that
- * carry the title (as subscription offers by default); this keeps ~26 extra
- * fixtures readable while still producing full TitleAvailability records.
+ * carry the title (as subscription offers by default); this keeps the fixtures
+ * readable while still producing full TitleAvailability records.
+ *
+ * `synthetic` (default true) marks obviously invented demo names, whose synopsis
+ * gets a "(Demo title.)" suffix. Recognisable, real Peacock-relevant titles pass
+ * `synthetic: false` so their synopsis reads naturally; every synopsis remains a
+ * short synthetic placeholder, not an official description (see the file header).
+ * When a title is on Peacock it is also marked preview- and playback-capable so
+ * the Peacock offer/preview/handoff flows work for any of them.
  */
 function demo(
   contentId: string,
@@ -62,6 +71,7 @@ function demo(
   synopsis: string,
   downloadable: boolean,
   on: StreamingProvider[],
+  synthetic = true,
 ): TitleAvailability {
   const availability: Availability[] = on.map((provider) => ({
     provider,
@@ -69,6 +79,7 @@ function demo(
     quality: provider === "netflix" || provider === "disney_plus" ? "4K" : "1080p",
     deepLinkRef: link(provider, contentId),
   }));
+  const onPeacock = on.includes("peacock");
   const t: TitleAvailability = {
     contentId,
     title,
@@ -76,11 +87,15 @@ function demo(
     genres,
     year,
     rating,
-    synopsis: `${synopsis} (Demo title.)`,
+    synopsis: synthetic ? `${synopsis} (Demo title.)` : synopsis,
     downloadable,
     availability,
   };
-  if (on.includes("peacock")) t.availableOnPeacock = true;
+  if (onPeacock) {
+    t.availableOnPeacock = true;
+    t.previewAvailable = true;
+    t.playbackAvailable = true;
+  }
   return t;
 }
 
@@ -115,6 +130,45 @@ const EXPANDED_CATALOG: TitleAvailability[] = [
   demo("ttl_jaws", "Jaws", "film", ["Thriller", "Adventure"], 1975, "PG", "A beach town's police chief hunts a great white shark terrorising the waters.", true, ["peacock", "prime_video", "apple_tv_plus"]),
   demo("ttl_shrek", "Shrek", "film", ["Comedy", "Adventure"], 2001, "PG", "A grumpy ogre and a talkative donkey set out to rescue a princess.", true, ["hulu", "prime_video"]),
   demo("ttl_bridesmaids", "Bridesmaids", "film", ["Comedy"], 2011, "R", "A maid of honour's life unravels as she leads her best friend's wedding party.", true, ["peacock", "netflix"]),
+
+  // --- Recognisable Peacock-relevant titles ---------------------------------
+  // Real title names used so the assistant can be exercised with familiar
+  // prompts. Synopses are still short synthetic placeholders, not official
+  // descriptions (see the file header). Peacock is one provider among several
+  // and is never treated as preferred by default.
+  demo("ttl_the_traitors", "The Traitors", "series", ["Reality", "Competition"], 2023, "TV-14", "Contestants scheme in a castle as hidden traitors pick off the faithful one by one.", false, ["peacock"], false),
+  demo("ttl_the_office", "The Office", "series", ["Comedy", "Sitcom"], 2005, "TV-14", "A mockumentary crew follows the staff of a mid-size paper company and its oblivious boss.", true, ["peacock"], false),
+  demo("ttl_parks_and_rec", "Parks and Recreation", "series", ["Comedy", "Sitcom"], 2009, "TV-14", "An endlessly upbeat public official schemes to improve her small Indiana town.", true, ["peacock"], false),
+  demo("ttl_yellowstone", "Yellowstone", "series", ["Drama", "Western"], 2018, "TV-MA", "A ranching dynasty defends its land against developers, rivals, and its own feuds.", true, ["peacock"], false),
+  demo("ttl_suits", "Suits", "series", ["Drama", "Legal"], 2011, "TV-14", "A brilliant college dropout fakes his credentials to work at a top law firm.", true, ["peacock"], false),
+  demo("ttl_brooklyn_nine_nine", "Brooklyn Nine-Nine", "series", ["Comedy", "Crime"], 2013, "TV-14", "An immature but talented detective clashes with his by-the-book new captain.", true, ["peacock"], false),
+  demo("ttl_dr_death", "Dr. Death", "series", ["Drama", "Crime"], 2021, "TV-MA", "A charismatic surgeon leaves a trail of maimed patients as colleagues fight to stop him.", true, ["peacock"], false),
+  demo("ttl_bel_air", "Bel-Air", "series", ["Drama"], 2022, "TV-14", "A dramatic reimagining follows a teen from West Philadelphia sent to live with wealthy relatives.", true, ["peacock"], false),
+  demo("ttl_poker_face_2", "Mrs. Davis", "series", ["Sci-Fi", "Comedy"], 2023, "TV-MA", "A nun sets out on a quest to destroy a world-controlling artificial intelligence.", true, ["peacock"], false),
+  demo("ttl_ted", "Ted", "series", ["Comedy"], 2024, "TV-MA", "A foul-mouthed living teddy bear causes chaos for the family that raised him.", true, ["peacock"], false),
+  demo("ttl_oppenheimer", "Oppenheimer", "film", ["Drama", "History"], 2023, "R", "The theoretical physicist races to build the atomic bomb and lives with the fallout.", true, ["peacock"], false),
+  demo("ttl_nope", "Nope", "film", ["Thriller", "Sci-Fi"], 2022, "R", "Ranch siblings try to capture evidence of a menacing presence in the sky above their home.", true, ["peacock"], false),
+  demo("ttl_the_fall_guy", "The Fall Guy", "film", ["Action", "Comedy"], 2024, "PG-13", "A stuntman is pulled back into danger to find a missing movie star.", true, ["peacock"], false),
+  demo("ttl_five_nights", "Five Nights at Freddy's", "film", ["Horror", "Thriller"], 2023, "PG-13", "A troubled night guard discovers the animatronics at a shuttered pizzeria come alive after dark.", true, ["peacock"], false),
+  demo("ttl_migration", "Migration", "film", ["Animation", "Comedy"], 2023, "PG", "A cautious duck family embarks on a chaotic journey south for the winter.", true, ["peacock"], false),
+  demo("ttl_wicked_little", "Wicked Little Letters", "film", ["Comedy", "Mystery"], 2024, "R", "A quiet seaside town is scandalised by a stream of anonymous, foul-mouthed letters.", true, ["peacock"], false),
+  demo("ttl_apples_never_fall", "Apples Never Fall", "series", ["Drama", "Mystery"], 2024, "TV-MA", "A family unravels when their matriarch disappears without a trace.", true, ["peacock"], false),
+  demo("ttl_days_of_our_lives", "Days of Our Lives", "series", ["Drama"], 1965, "TV-14", "The intertwined lives, loves, and rivalries of the residents of a fictional midwestern town.", false, ["peacock"], false),
+  demo("ttl_below_deck", "Below Deck", "series", ["Reality"], 2013, "TV-14", "The crew of a luxury charter yacht juggles demanding guests and shipboard drama.", false, ["peacock"], false),
+  demo("ttl_real_housewives", "The Real Housewives of Beverly Hills", "series", ["Reality"], 2010, "TV-14", "Affluent friends navigate lavish lifestyles, alliances, and explosive fallouts.", false, ["peacock"], false),
+  demo("ttl_top_chef", "Top Chef", "series", ["Reality", "Competition"], 2006, "TV-14", "Talented cooks battle through high-pressure culinary challenges for the title.", false, ["peacock"], false),
+  demo("ttl_saturday_night_live", "Saturday Night Live", "series", ["Comedy", "Variety"], 1975, "TV-14", "A live late-night sketch show skewers the week's news with a rotating host.", false, ["peacock"], false),
+  demo("ttl_law_and_order_svu", "Law & Order: SVU", "series", ["Drama", "Crime"], 1999, "TV-14", "An elite squad investigates sexually based offenses in New York City.", true, ["peacock"], false),
+  demo("ttl_the_continental", "The Continental", "series", ["Action", "Thriller"], 2023, "TV-MA", "A young operative fights to seize control of a legendary hotel for assassins.", true, ["peacock"], false),
+  demo("ttl_twisters", "Twisters", "film", ["Action", "Adventure"], 2024, "PG-13", "Rival storm chasers collide as an unprecedented outbreak of tornadoes tears across the plains.", true, ["peacock"], false),
+  demo("ttl_abigail", "Abigail", "film", ["Horror", "Thriller"], 2024, "R", "Kidnappers discover the little girl they abducted is far more dangerous than she seems.", true, ["peacock"], false),
+  demo("ttl_kung_fu_panda_4", "Kung Fu Panda 4", "film", ["Animation", "Comedy"], 2024, "PG", "The Dragon Warrior must train a successor while facing a shape-shifting new foe.", true, ["peacock"], false),
+  demo("ttl_the_holdovers", "The Holdovers", "film", ["Comedy", "Drama"], 2023, "R", "A cranky teacher is stuck babysitting the students with nowhere to go over winter break.", true, ["peacock"], false),
+  demo("ttl_meet_the_parents", "Meet the Parents", "film", ["Comedy"], 2000, "PG-13", "A nervous nurse endures a disastrous weekend trying to impress his girlfriend's stern father.", true, ["peacock"], false),
+  demo("ttl_jurassic_park", "Jurassic Park", "film", ["Adventure", "Sci-Fi"], 1993, "PG-13", "A theme park of cloned dinosaurs spirals out of control during a preview tour.", true, ["peacock"], false),
+  demo("ttl_back_to_the_future", "Back to the Future", "film", ["Adventure", "Sci-Fi"], 1985, "PG", "A teenager is accidentally sent thirty years into the past in a time-travelling car.", true, ["peacock"], false),
+  demo("ttl_pitch_perfect", "Pitch Perfect", "film", ["Comedy", "Music"], 2012, "PG-13", "A reluctant freshman joins an a cappella group determined to win the national title.", true, ["peacock", "netflix"], false),
+  demo("ttl_wicked", "Wicked", "film", ["Musical", "Fantasy"], 2024, "PG", "Two young women forge an unlikely friendship on their way to becoming the witches of Oz.", true, ["peacock"], false),
 ];
 
 export const CATALOG: TitleAvailability[] = [
@@ -301,13 +355,22 @@ export function getRecommendationsData(genre?: string): TitleAvailability[] {
   return CATALOG.filter((t) => t.genres.some((x) => x.toLowerCase() === g));
 }
 
-/** Best-effort single-title resolver used when adding by name. */
+/**
+ * Best-effort single-title resolver used when adding by name. Resolution order:
+ * exact canonical title → canonical/alias substring (longest wins) → substring
+ * containment → conservative fuzzy (typo-tolerant). This lets "add Traiters to
+ * my watchlist" still resolve The Traitors without matching unrelated titles.
+ */
 export function resolveTitleByName(name: string): TitleAvailability | undefined {
   const q = name.trim().toLowerCase();
   if (!q) return undefined;
   const exact = CATALOG.find((t) => t.title.toLowerCase() === q);
   if (exact) return exact;
-  return CATALOG.find((t) => t.title.toLowerCase().includes(q));
+  const viaAlias = extractTitleFromText(q);
+  if (viaAlias) return viaAlias;
+  const contains = CATALOG.find((t) => t.title.toLowerCase().includes(q));
+  if (contains) return contains;
+  return fuzzyResolveTitle(q);
 }
 
 /**
@@ -320,6 +383,15 @@ export function resolveTitleByName(name: string): TitleAvailability | undefined 
  */
 export const TITLE_ALIASES: Record<string, string[]> = {
   ttl_love_island_usa: ["Love Island"],
+  ttl_the_traitors: ["Traitors"],
+  ttl_parks_and_rec: ["Parks and Rec", "Parks & Rec", "Parks & Recreation"],
+  ttl_brooklyn_nine_nine: ["Brooklyn 99", "Brooklyn Nine Nine", "B99"],
+  ttl_law_and_order_svu: ["Law and Order SVU", "SVU", "Law & Order Special Victims Unit"],
+  ttl_saturday_night_live: ["SNL"],
+  ttl_real_housewives: ["Real Housewives of Beverly Hills", "RHOBH"],
+  ttl_five_nights: ["Five Nights at Freddys", "FNAF"],
+  ttl_kung_fu_panda_4: ["Kung Fu Panda"],
+  ttl_back_to_the_future: ["Back to the Future Part I"],
 };
 
 /**
@@ -335,19 +407,132 @@ const TITLE_MATCH_INDEX: { needle: string; title: TitleAvailability }[] = CATALO
 ).sort((a, b) => b.needle.length - a.needle.length);
 
 /**
+ * Normalise a title-ish string for fuzzy comparison: lowercase, strip all
+ * punctuation (so "Brooklyn Nine-Nine" ≈ "brooklyn nine nine" and "Freddy's" ≈
+ * "freddys"), collapse whitespace, and drop a leading article. Used only for the
+ * conservative fuzzy layer — exact/alias substring matching runs first.
+ */
+export function normalizeTitle(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^the\s+/, "");
+}
+
+/** Same candidate set as TITLE_MATCH_INDEX, keyed by normalised name. */
+const TITLE_NORM_INDEX: { norm: string; title: TitleAvailability }[] = TITLE_MATCH_INDEX
+  .map(({ needle, title }) => ({ norm: normalizeTitle(needle), title }))
+  .filter((e) => e.norm.length > 0);
+
+/** Levenshtein edit distance between two short strings. */
+function editDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  let curr = new Array<number>(n + 1);
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+
+/**
+ * Conservative fuzzy resolution of a bare, normalised query against known
+ * (canonical + alias) names. Only used after exact and alias substring matching
+ * fail, and only against a short candidate query (a title on its own, not a full
+ * sentence). Tolerances are deliberately tight so unrelated titles never match:
+ *
+ *   - exact normalised equality always wins;
+ *   - otherwise, for queries of at least 5 characters, accept a single closest
+ *     candidate within an edit distance of 1 (short titles) or 2 (10+ chars),
+ *     and only when that best candidate is unambiguously closer than the next.
+ */
+function fuzzyResolveQuery(query: string): TitleAvailability | undefined {
+  const q = normalizeTitle(query);
+  if (!q) return undefined;
+  const exact = TITLE_NORM_INDEX.find((e) => e.norm === q);
+  if (exact) return exact.title;
+  if (q.length < 5) return undefined;
+  const maxDistance = q.length >= 10 ? 2 : 1;
+  let best: { title: TitleAvailability; dist: number } | undefined;
+  // Second-best distance among candidates for a *different* title, so multiple
+  // names for the same title (canonical + alias, both normalising equally) never
+  // count as an ambiguous tie.
+  let secondDist = Infinity;
+  for (const { norm, title } of TITLE_NORM_INDEX) {
+    // Skip candidates whose length is too different to be within tolerance.
+    if (Math.abs(norm.length - q.length) > maxDistance) continue;
+    const dist = editDistance(q, norm);
+    if (!best || dist < best.dist) {
+      if (best && best.title.contentId !== title.contentId) secondDist = Math.min(secondDist, best.dist);
+      best = { title, dist };
+    } else if (title.contentId !== best.title.contentId && dist < secondDist) {
+      secondDist = dist;
+    }
+  }
+  if (best && best.dist <= maxDistance && best.dist < secondDist) return best.title;
+  return undefined;
+}
+
+/** Longest normalised title name, in tokens — bounds the sliding-window search. */
+const MAX_TITLE_TOKENS = TITLE_NORM_INDEX.reduce(
+  (max, e) => Math.max(max, e.norm.split(" ").length),
+  1,
+);
+
+/**
+ * Fuzzy resolution over a possibly-sentence-length query. Tries the whole query
+ * first (so a bare "Poker Fase" resolves), then slides a token window across the
+ * text — bounded by the longest known title — so a typo embedded in a sentence
+ * ("where can i watch poker fase") still resolves. Every candidate window is run
+ * through the same tight per-window tolerance in fuzzyResolveQuery, so unrelated
+ * text never matches. The longest windows are tried first for specificity.
+ */
+function fuzzyResolveTitle(query: string): TitleAvailability | undefined {
+  const whole = fuzzyResolveQuery(query);
+  if (whole) return whole;
+  const tokens = normalizeTitle(query).split(" ").filter(Boolean);
+  if (tokens.length < 2) return undefined;
+  for (let size = Math.min(MAX_TITLE_TOKENS, tokens.length); size >= 1; size--) {
+    for (let i = 0; i + size <= tokens.length; i++) {
+      const window = tokens.slice(i, i + size).join(" ");
+      if (window.length < 5) continue;
+      const hit = fuzzyResolveQuery(window);
+      if (hit) return hit;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Resolve a whole user sentence to a specific catalog title by finding the
  * longest known title name (canonical or alias) that appears as a substring of
  * the text. This lets the agent extract "Love Island USA" from "I want to watch
  * Love Island USA" — and "Love Island" from "Can I watch Love Island on
  * Peacock?" — without passing the entire sentence into a literal catalog search.
  * The returned record is always the canonical TitleAvailability.
+ *
+ * Matching order: exact canonical/alias substring first (longest wins); then, if
+ * nothing matches, a conservative fuzzy pass over the whole text so a light
+ * typo ("Poker Fase", "Traiters") still resolves without pulling in unrelated
+ * titles.
  */
 export function extractTitleFromText(text: string): TitleAvailability | undefined {
   const t = text.toLowerCase();
   for (const { needle, title } of TITLE_MATCH_INDEX) {
     if (t.includes(needle)) return title;
   }
-  return undefined;
+  return fuzzyResolveTitle(text);
 }
 
 /**

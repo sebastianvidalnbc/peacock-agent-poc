@@ -3,6 +3,8 @@ import { Agent } from "./agent";
 import { ConversationState } from "./conversation-state";
 import { MockPeacockService } from "../peacock/MockPeacockService";
 import { prototypeStore } from "../state/prototype-store";
+import { extractTitleFromText, resolveTitleByName, CATALOG } from "../data/catalog";
+import { parseInvocation, routeIntent } from "./intent-router";
 
 /** Build a connected agent with no artificial delay for deterministic tests. */
 function connectedAgent() {
@@ -570,5 +572,168 @@ describe("Guest Peacock Mode — access boundary", () => {
     expect(kinds).not.toContain("connect");
     expect(kinds).not.toContain("open");
     expect(res.card?.kind).not.toBe("connect");
+  });
+});
+
+/**
+ * Title resolution (aliases + fuzzy), conversation-context selection, and the
+ * explicit @PeacockTV invocation contract from the expansion brief. Explicit
+ * invocation routes public discovery through Peacock but never implies auth.
+ */
+describe("Title aliases, selection context, and @PeacockTV invocation", () => {
+  beforeEach(() => prototypeStore.clearAll());
+
+  it("resolves the 'Traitors' alias to The Traitors for 'Where can I watch Traitors?'", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("Where can I watch Traitors?");
+    expect(res.card?.kind).toBe("where_to_watch");
+    if (res.card?.kind === "where_to_watch") expect(res.card.data.title).toBe("The Traitors");
+  });
+
+  it("resolves 'The Traitors' after a clarification turn", async () => {
+    const agent = connectedAgent();
+    const clar = await agent.respond("Where can I watch it?");
+    // No context yet → a clarification, not the unsupported reply.
+    expect(clar.card).toBeUndefined();
+    expect(clar.text.toLowerCase()).toMatch(/which (title|show or movie)/);
+    const res = await agent.respond("The Traitors");
+    // A bare known title resolves to a watch offer for that title.
+    expect(res.card?.kind).toBe("title_offer");
+    if (res.card?.kind === "title_offer") expect(res.card.data.title).toBe("The Traitors");
+  });
+
+  it("sets title context from a selection ('Poker Face sounds good') then adds it via 'add it'", async () => {
+    const agent = connectedAgent();
+    const rec = await agent.respond("Recommend a comedy");
+    const rows = rec.card?.kind === "discovery" ? rec.card.rows : [];
+    expect(rows.some((r) => r.title.title === "Poker Face")).toBe(true);
+
+    const pick = await agent.respond("Poker Face sounds good");
+    expect(pick.debug?.intent).toBe("select_title");
+    expect(agent.ctx.getLastReferencedTitle()).toBe("ttl_poker_face");
+
+    const add = await agent.respond("Can you add it to my watchlist?");
+    expect(add.toolName).toBe("add_to_watchlist");
+    const list = add.card?.kind === "watchlist" ? add.card.data : [];
+    expect(list.some((t) => t.title === "Poker Face")).toBe(true);
+  });
+
+  it("selects by ordinal ('the second one') from the last results", async () => {
+    const agent = connectedAgent();
+    const rec = await agent.respond("Recommend a comedy");
+    const rows = rec.card?.kind === "discovery" ? rec.card.rows : [];
+    expect(rows.length).toBeGreaterThan(1);
+    const res = await agent.respond("The second one");
+    expect(res.debug?.intent).toBe("select_title");
+    if (res.card?.kind === "title") expect(res.card.data.contentId).toBe(rows[1].title.contentId);
+  });
+
+  it("routes '@PeacockTV find The Traitors' to a Peacock catalog search", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("@PeacockTV find The Traitors");
+    expect(res.debug?.invocation).toBe("explicit Peacock");
+    expect(res.toolName).toBe("search_catalog");
+    const titles = res.card?.kind === "search" ? res.card.data : [];
+    expect(titles.some((t) => t.title === "The Traitors")).toBe(true);
+  });
+
+  it("routes the '@Peacock' alias the same as '@PeacockTV'", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("@Peacock find The Traitors");
+    expect(res.debug?.invocation).toBe("explicit Peacock");
+    expect(res.toolName).toBe("search_catalog");
+    const titles = res.card?.kind === "search" ? res.card.data : [];
+    expect(titles.some((t) => t.title === "The Traitors")).toBe(true);
+  });
+
+  it("routes '@PeacockTV recommend something funny' to Peacock recommendations", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("@PeacockTV recommend something funny");
+    expect(res.debug?.invocation).toBe("explicit Peacock");
+    expect(res.toolName).toBe("get_recommendations");
+    const rows = res.card?.kind === "discovery" ? res.card.rows : [];
+    expect(rows.length).toBeGreaterThan(0);
+    // Every recommended title is genuinely on Peacock (explicit-Peacock filter).
+    expect(rows.every((r) => r.title.availability.some((a) => a.provider === "peacock"))).toBe(true);
+  });
+
+  it("routes '@PeacockTV show me a preview of Poker Face' to a Peacock preview", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("@PeacockTV show me a preview of Poker Face");
+    expect(res.debug?.invocation).toBe("explicit Peacock");
+    expect(res.toolName).toBe("get_preview");
+    expect(res.card?.kind).toBe("title_offer");
+    const preview = res.card?.kind === "title_offer" ? res.card.preview : undefined;
+    expect(preview?.previewAvailable).toBe(true);
+  });
+
+  it("gates '@PeacockTV add Poker Face to my watchlist' behind connect, preserving the mention for resume", async () => {
+    const agent = disconnectedAgent();
+    const input = "@PeacockTV add Poker Face to my watchlist";
+    const before = [...prototypeStore.getOverlay("alex").watchlist];
+    const res = await agent.respond(input);
+    // Personal write requires a connection — no mutation, connect prompt shown.
+    expect(res.card?.kind).toBe("connect");
+    expect(res.toolName).toBeUndefined();
+    const connect = res.actions?.find((a) => a.kind === "connect");
+    expect(connect?.resumeText).toBe(input);
+    expect(prototypeStore.getOverlay("alex").watchlist).toEqual(before);
+
+    // Simulated connect + resume performs the add.
+    prototypeStore.connect("alex");
+    const resumed = await agent.respond(connect!.resumeText!);
+    expect(resumed.toolName).toBe("add_to_watchlist");
+    const list = resumed.card?.kind === "watchlist" ? resumed.card.data : [];
+    expect(list.some((t) => t.title === "Poker Face")).toBe(true);
+  });
+
+  it("explicit invocation does not imply an authenticated account", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("@PeacockTV find The Traitors");
+    // Anonymous discovery still works, and the turn stays Guest / noauth.
+    expect(res.access).toEqual({ mode: "noauth", label: "Guest / noauth" });
+    expect(res.toolName).toBe("search_catalog");
+  });
+});
+
+/** Catalog scale, alias resolution, and conservative fuzzy matching. */
+describe("Catalog resolution (aliases + fuzzy)", () => {
+  it("carries at least 50 titles", () => {
+    expect(CATALOG.length).toBeGreaterThanOrEqual(50);
+  });
+
+  it("resolves required aliases to their canonical titles", () => {
+    expect(extractTitleFromText("Traitors")?.title).toBe("The Traitors");
+    expect(extractTitleFromText("Love Island")?.title).toBe("Love Island USA");
+    expect(extractTitleFromText("Parks and Rec")?.title).toBe("Parks and Recreation");
+    expect(extractTitleFromText("Brooklyn 99")?.title).toBe("Brooklyn Nine-Nine");
+  });
+
+  it("ignores casing and punctuation", () => {
+    expect(extractTitleFromText("the   TRAITORS!!")?.title).toBe("The Traitors");
+    expect(extractTitleFromText("brooklyn nine nine")?.title).toBe("Brooklyn Nine-Nine");
+  });
+
+  it("fuzzily resolves a light typo without matching unrelated titles", () => {
+    expect(extractTitleFromText("Poker Fase")?.title).toBe("Poker Face");
+    expect(resolveTitleByName("Traiters")?.title).toBe("The Traitors");
+    // Conservative: a short, unrelated word does not resolve to anything.
+    expect(extractTitleFromText("zzzq")).toBeUndefined();
+    expect(extractTitleFromText("banana pancakes")).toBeUndefined();
+  });
+
+  it("parses and strips only a leading @PeacockTV / @Peacock mention", () => {
+    expect(parseInvocation("@PeacockTV find The Traitors")).toEqual({
+      explicitApp: "peacock",
+      text: "find The Traitors",
+    });
+    expect(parseInvocation("@Peacock find The Traitors").explicitApp).toBe("peacock");
+    // A mid-sentence mention is not an explicit invocation.
+    expect(parseInvocation("is it on @peacock").explicitApp).toBeUndefined();
+  });
+
+  it("marks an implicit turn as implicit in the router output", () => {
+    expect(routeIntent("Where can I watch Traitors?").explicitApp).toBeUndefined();
+    expect(routeIntent("@PeacockTV find The Traitors").explicitApp).toBe("peacock");
   });
 });

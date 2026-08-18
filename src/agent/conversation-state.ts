@@ -8,12 +8,25 @@ export class ConversationState {
   private lastIntentKind: string | null = null;
   private awaitingRecommendCriteria = false;
   private lastDiscoveryIds: string[] = [];
+  private lastResultIds: string[] = [];
 
+  /**
+   * The single title the conversation is currently "about" — the last one named,
+   * offered, or selected. Follow-ups that refer to a title by pronoun ("preview
+   * it", "add it to my watchlist") resolve against this. `setLastTitle` and
+   * `getLastTitle` are the canonical accessors; the "lastReferencedTitle" naming
+   * in the brief maps directly onto them.
+   */
   setLastTitle(contentId: string | null): void {
     this.lastTitleId = contentId;
   }
 
   getLastTitle(): string | null {
+    return this.lastTitleId;
+  }
+
+  /** Alias for getLastTitle(), matching the "lastReferencedTitle" brief naming. */
+  getLastReferencedTitle(): string | null {
     return this.lastTitleId;
   }
 
@@ -28,6 +41,20 @@ export class ConversationState {
 
   getLastDiscovery(): string[] {
     return this.lastDiscoveryIds;
+  }
+
+  /**
+   * The ordered list of titles most recently shown to the user (search,
+   * recommendation, or discovery results). Enables selection follow-ups such as
+   * "the second one" (by ordinal) or "Poker Face sounds good" (by name) to pick
+   * a single result and promote it to the referenced title.
+   */
+  setLastResults(contentIds: string[]): void {
+    this.lastResultIds = [...contentIds];
+  }
+
+  getLastResults(): string[] {
+    return this.lastResultIds;
   }
 
   setLastIntent(kind: string): void {
@@ -55,5 +82,6 @@ export class ConversationState {
     this.lastIntentKind = null;
     this.awaitingRecommendCriteria = false;
     this.lastDiscoveryIds = [];
+    this.lastResultIds = [];
   }
 }

@@ -357,6 +357,35 @@ button { font: inherit; cursor: pointer; color: inherit; }
 .tools-state { font-size: 12px; color: var(--muted); }
 .tools-state.on { color: var(--good); }
 
+/* "@" mention picker — anchored to the field, mirrors the tools menu styling
+   but offers only the Peacock explicit-invocation token. */
+.mention { position: relative; flex: none; width: 0; }
+.mention-menu {
+  position: absolute; bottom: 44px; left: 0; z-index: 5;
+  min-width: 200px; padding: 6px;
+  background: #2a2a2a; border: 1px solid var(--border-strong);
+  border-radius: 16px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+/* A visually distinct Peacock token shown above the field once a leading
+   @PeacockTV mention is present, so the explicit routing reads clearly. */
+.mention-chip-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  max-width: 720px; margin: 0 auto 6px; padding: 0 6px;
+}
+.mention-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 999px;
+  background: var(--peacock); color: #fff;
+  font-size: 12px; font-weight: 700; letter-spacing: .01em;
+}
+.mention-chip-mark { width: 12px; height: 12px; border-radius: 4px; background: rgba(255,255,255,.85); }
+.mention-chip-note { font-size: 12px; color: var(--muted); }
+/* A leading @PeacockTV token inside a sent user bubble. */
+.msg-mention {
+  display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 999px;
+  background: var(--peacock); color: #fff; font-weight: 700; font-size: .92em;
+}
+
 /* ---- Overlays / sheets ---- */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 20; display: flex; }
 .sheet-overlay { align-items: flex-end; justify-content: center; }

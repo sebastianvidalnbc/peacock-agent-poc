@@ -18,10 +18,24 @@ export function MessageBubble({
   onAction: (action: AssistantAction, messageId: string) => void;
 }) {
   const isUser = message.role === "user";
+  // Highlight a leading @PeacockTV / @Peacock mention in a user turn so the
+  // explicit invocation reads as a distinct token rather than plain text.
+  const mention = isUser ? message.text.match(/^\s*(@peacock(?:tv)?)\b/i) : null;
   return (
     <div className={`msg ${isUser ? "user" : "assistant"}`}>
       <div className="col">
-        {message.text && <div className={isUser ? "bubble" : "prose"}>{message.text}</div>}
+        {message.text && (
+          <div className={isUser ? "bubble" : "prose"}>
+            {mention ? (
+              <>
+                <span className="msg-mention">{mention[1]}</span>
+                {message.text.slice(mention[0].length)}
+              </>
+            ) : (
+              message.text
+            )}
+          </div>
+        )}
         {message.card && <PeacockCard card={message.card} previewOpen={previewOpen} />}
         {policyMode && !isUser && message.policy && (
           <div className={`policy-badge policy-${message.policy}`} aria-label="OpenAI policy status">
@@ -67,6 +81,9 @@ export function MessageBubble({
         )}
         {debug && !isUser && message.debug && (
           <div className="intent-inspector" aria-label="Intent inspector">
+            <span className="ii-item">
+              <span className="ii-key">Invocation</span> {message.debug.invocation}
+            </span>
             <span className="ii-item">
               <span className="ii-key">Intent</span> {message.debug.intent}
             </span>
