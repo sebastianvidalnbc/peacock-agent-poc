@@ -181,6 +181,37 @@ export const ActionResultSchema = z.object({
   message: z.string(),
 });
 
+/**
+ * Simulated per-title viewing progress for the connected account. Read-only in
+ * this prototype (Continue Watching / resume / viewing history). All values are
+ * fixture-derived; no real Peacock viewing telemetry is modelled.
+ */
+export const ViewingProgressSchema = z.object({
+  contentId: z.string(),
+  title: z.string(),
+  seasonNumber: z.number().optional(),
+  episodeNumber: z.number().optional(),
+  episodeTitle: z.string().optional(),
+  progressSeconds: z.number(),
+  durationSeconds: z.number(),
+  completed: z.boolean(),
+  /** Simulated last-watched marker (ISO date). Not surfaced as a raw ID in UI. */
+  lastWatchedAt: z.string().optional(),
+});
+
+export const ViewingHistorySchema = z.array(ViewingProgressSchema);
+
+/** Next-episode metadata for a series, resolved from mock fixtures. */
+export const NextEpisodeSchema = z.object({
+  contentId: z.string(),
+  title: z.string(),
+  seasonNumber: z.number(),
+  episodeNumber: z.number(),
+  episodeTitle: z.string(),
+  /** Whether the demo has a next episode after the user's last-watched point. */
+  hasNext: z.boolean(),
+});
+
 // Common tool inputs
 export const ContentIdInputSchema = z.object({ contentId: z.string() });
 export const SearchInputSchema = z.object({ query: z.string() });

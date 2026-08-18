@@ -24,6 +24,8 @@ import type {
   ActionResultSchema,
   VideoQualitySchema,
   WatchHistoryEntrySchema,
+  ViewingProgressSchema,
+  NextEpisodeSchema,
 } from "./schemas";
 
 /**
@@ -57,6 +59,9 @@ export type PlaybackDestination = z.infer<typeof PlaybackDestinationSchema>;
 export type PlanChangePreview = z.infer<typeof PlanChangePreviewSchema>;
 export type CancellationPreview = z.infer<typeof CancellationPreviewSchema>;
 export type ActionResult = z.infer<typeof ActionResultSchema>;
+
+export type ViewingProgress = z.infer<typeof ViewingProgressSchema>;
+export type NextEpisode = z.infer<typeof NextEpisodeSchema>;
 
 /** Error thrown by the service when a personal action needs a connection. */
 export class PeacockNotConnectedError extends Error {

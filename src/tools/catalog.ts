@@ -18,6 +18,8 @@ export const searchCatalogTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  readOnlyHint: true,
+  openWorldHint: true,
   handler: (service, input) => service.searchCatalog(input.query),
 });
 
@@ -31,6 +33,8 @@ export const getTitleDetailsTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  readOnlyHint: true,
+  openWorldHint: true,
   handler: (service, input) => service.getTitleDetails(input.contentId),
 });
 
@@ -44,6 +48,8 @@ export const getPreviewTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  readOnlyHint: true,
+  openWorldHint: false,
   handler: (service, input) => service.getPreview(input.contentId),
 });
 
@@ -57,5 +63,8 @@ export const getPlaybackDestinationTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  readOnlyHint: true,
+  // Handoff to the external Peacock app — an open-world interaction.
+  openWorldHint: true,
   handler: (service, input) => service.getPlaybackDestination(input.contentId),
 });

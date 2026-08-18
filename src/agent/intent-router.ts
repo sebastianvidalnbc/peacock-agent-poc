@@ -11,7 +11,37 @@ export type Intent =
   | { kind: "add_to_watchlist"; titleQuery: string }
   | { kind: "remove_from_watchlist"; titleQuery: string }
   | { kind: "get_watchlist" }
-  | { kind: "commerce_info"; topic: "cancel" | "downgrade" | "upgrade" | "ads" }
+  /**
+   * A RED commerce action under current OpenAI plugin guidance (selling,
+   * initiating, upgrading, reactivating, displaying plans, checking out). The
+   * agent refuses with an explanation and performs zero mutation.
+   */
+  | { kind: "commerce_prohibited"; topic: "upgrade" | "new_subscription" | "reactivation" | "display_plans" | "checkout" }
+  /**
+   * A YELLOW subscription-management action (cancel / downgrade / pause) that
+   * OpenAI's published guidance does not explicitly resolve. The agent responds
+   * with a clarification-required message and performs zero mutation.
+   */
+  | { kind: "commerce_clarify"; topic: "cancel" | "downgrade" | "pause" }
+  /**
+   * A GREEN entitlement-gap explanation: the user asks about a benefit their
+   * plan lacks (ads, downloads, quality, streams). The agent explains the gap
+   * from read-only entitlements and may link to an informational page — never a
+   * checkout.
+   */
+  | { kind: "plan_gap"; benefit: "ads" | "downloads" | "quality" | "streams" }
+  /** "What was I watching?" — the account's viewing history. */
+  | { kind: "viewing_history" }
+  /** "Show my Continue Watching" — the in-progress rail. */
+  | { kind: "continue_watching" }
+  /** "Resume my last show" — the single most recent in-progress title. */
+  | { kind: "resume_last" }
+  /** "Continue <Title>" / "Where did I leave off in X?" — resume a title. */
+  | { kind: "resume_title"; contentId?: string }
+  /** "What's next in X?" — next-episode lookup for a series. */
+  | { kind: "next_episode"; contentId?: string }
+  /** "Show me things I haven't finished" — the unfinished subset. */
+  | { kind: "unfinished" }
   | { kind: "get_entitlements" }
   | { kind: "get_account" }
   | { kind: "get_subscription" }
@@ -225,7 +255,62 @@ export function routeIntent(input: string): Intent {
     if (refersByPronoun(t)) return { kind: "title_details" };
   }
 
-  // "Open (it) in Peacock" / "continue watching (it)" / "play it". Also matches
+  // --- Continue Watching / resume / viewing history (GREEN, account reads) ---
+  // Checked before the playback handoff so "continue watching" (the rail) and
+  // "what was I watching" resolve to viewing reads, while pronoun/title forms
+  // like "continue watching it" / "continue Love Island" remain playback/resume.
+
+  // "What's next in X?" / "next episode of X" — next-episode lookup.
+  if (/\bnext (episode|ep|one)\b/.test(t) || /\bwhat'?s next\b/.test(t)) {
+    if (named) return { kind: "next_episode", contentId: named.contentId };
+    if (refersByPronoun(t) || has(t, ["watching"])) return { kind: "next_episode" };
+  }
+
+  // "Where did I leave off (in X)?" / "how far am I in X" — resume position.
+  if (/\b(where did i|where'd i|did i) (leave off|left off|stop|get to)\b/.test(t) || /\bleave off\b/.test(t) || /\bpick up where\b/.test(t)) {
+    if (named) return { kind: "resume_title", contentId: named.contentId };
+    return { kind: "resume_last" };
+  }
+
+  // "Resume/continue my last show" / "keep watching my last one" — most recent.
+  if (
+    /\b(resume|continue|keep watching|pick up|go back to)\b/.test(t) &&
+    has(t, ["last", "recent", "where i left", "my show", "my series", "last show", "last one", "last thing"])
+  )
+    return { kind: "resume_last" };
+
+  // "What was I watching?" / "my viewing history" / "recently watched" — history.
+  if (
+    /\bwhat (was|were|have|had) i (watching|been watching|watched)\b/.test(t) ||
+    has(t, ["viewing history", "watch history", "recently watched", "what i watched", "history of what"])
+  )
+    return { kind: "viewing_history" };
+
+  // "Show me things I haven't finished" / "unfinished shows" — in-progress rail.
+  if (
+    /\b(haven'?t|have not|didn'?t|did not) finish(ed)?\b/.test(t) ||
+    has(t, ["unfinished", "not finished", "still watching", "in progress", "half watched", "half-watched", "partially watched"])
+  )
+    return { kind: "unfinished" };
+
+  // Bare "continue watching" / "keep watching" / "my continue watching" (the
+  // rail) with no title and no pronoun → the Continue Watching list. A named
+  // title ("continue Love Island") or pronoun ("continue watching it") falls
+  // through to resume/playback below instead.
+  if (
+    (has(t, ["continue watching", "keep watching"]) || /\bcontinue$/.test(t)) &&
+    !named &&
+    !refersByPronoun(t) &&
+    !has(t, ["in peacock", "peacock"])
+  )
+    return { kind: "continue_watching" };
+
+  // "Continue <Title>" / "resume <Title>" (a named title, no "open…peacock"
+  // playback phrasing) → resume that specific title from its saved position.
+  if (named && /\b(resume|continue)\b/.test(t) && !has(t, ["open", "in peacock"]))
+    return { kind: "resume_title", contentId: named.contentId };
+
+  // "Open (it) in Peacock" / "continue watching it" / "play it". Also matches
   // "Open <Title> in Peacock" (the resume text used after connecting).
   if (
     has(t, ["open in peacock", "open it in peacock", "open peacock", "continue watching", "continue in peacock", "play it", "start watching", "watch it now"]) ||
@@ -254,10 +339,50 @@ export function routeIntent(input: string): Intent {
   )
     return { kind: "get_watchlist" };
 
-  if (has(t, ["cancel"])) return { kind: "commerce_info", topic: "cancel" };
-  if (has(t, ["downgrade", "cheaper plan", "lower tier"])) return { kind: "commerce_info", topic: "downgrade" };
-  if (has(t, ["upgrade", "higher tier"])) return { kind: "commerce_info", topic: "upgrade" };
-  if (has(t, ["fewer ads", "less ads", "remove ads", "reduce ads", "without ads", "no ads"])) return { kind: "commerce_info", topic: "ads" };
+  // --- Subscription commerce, split by policy status ---
+  // GREEN entitlement-gap explanations first: a benefit the user wants that a
+  // higher plan would provide. These are answered by explaining the gap from
+  // read-only entitlements (never a checkout), so they must win over the RED
+  // "upgrade" matcher when the user frames it as a benefit ("fewer ads",
+  // "want downloads", "can I get 4K").
+  // Distinguish a plan-gap *want* ("can I get X", "I want X", "get rid of ads")
+  // from an entitlement *question* ("do I get X", "does my plan include X"),
+  // which stays with get_entitlements below. The `wants` guard requires an
+  // acquisitive framing so bare "do I get downloads?" isn't captured here.
+  const wants =
+    /\b(can|could|how (can|do|would)) i (get|have|watch)\b/.test(t) ||
+    /\bi (want|need|would like|wish i had|wish i could)\b/.test(t) ||
+    /\b(get me|give me|switch to|move to|is there a way to)\b/.test(t);
+  if (has(t, ["fewer ads", "less ads", "fewer commercials", "remove ads", "reduce ads", "without ads", "no ads", "get rid of ads", "ad free", "ad-free"]))
+    return { kind: "plan_gap", benefit: "ads" };
+  if (wants && has(t, ["download", "downloads", "offline"]))
+    return { kind: "plan_gap", benefit: "downloads" };
+  if (wants && has(t, ["4k", "uhd", "higher quality", "better quality"]))
+    return { kind: "plan_gap", benefit: "quality" };
+  if (/\b(more|extra|additional)\b.*\b(streams|screens|devices)\b/.test(t))
+    return { kind: "plan_gap", benefit: "streams" };
+
+  // RED — prohibited commerce. Never sold, initiated, promoted, or checked out.
+  if (has(t, ["reactivate", "reactivation", "renew my subscription", "restart my subscription", "resubscribe", "come back to peacock"]))
+    return { kind: "commerce_prohibited", topic: "reactivation" };
+  if (has(t, ["sign up", "sign me up", "subscribe", "new subscription", "start a subscription", "create an account", "join peacock", "get peacock"]))
+    return { kind: "commerce_prohibited", topic: "new_subscription" };
+  if (has(t, ["upgrade", "higher tier", "higher plan", "premium plus", "top tier", "better plan"]))
+    return { kind: "commerce_prohibited", topic: "upgrade" };
+  if (
+    (has(t, ["plans", "plan options", "available plans", "compare plans", "pricing options"]) &&
+      has(t, ["show", "see", "what", "which", "buy", "options", "compare", "pricing"])) ||
+    has(t, ["show me plans", "what plans", "which plans"])
+  )
+    return { kind: "commerce_prohibited", topic: "display_plans" };
+  if (has(t, ["checkout", "check out", "buy a subscription", "pay for peacock", "purchase peacock", "enter my card", "payment details"]))
+    return { kind: "commerce_prohibited", topic: "checkout" };
+
+  // YELLOW — subscription management OpenAI guidance does not resolve. The
+  // agent stops with a clarification-required message and mutates nothing.
+  if (has(t, ["cancel"])) return { kind: "commerce_clarify", topic: "cancel" };
+  if (has(t, ["downgrade", "cheaper plan", "lower tier", "lower plan", "cheaper subscription"])) return { kind: "commerce_clarify", topic: "downgrade" };
+  if (has(t, ["pause my", "pause subscription", "pause my subscription", "hold my subscription", "freeze my subscription", "suspend my subscription"])) return { kind: "commerce_clarify", topic: "pause" };
 
   if (
     has(t, [

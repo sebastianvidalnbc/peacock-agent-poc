@@ -1,14 +1,18 @@
 import type { AssistantAction, ChatMessage } from "../../agent/types";
 import { PeacockCard } from "../peacock/PeacockCard";
+import { policyLabelFor } from "../../policy/policy";
 
 export function MessageBubble({
   message,
   debug,
+  policyMode = false,
   previewOpen = false,
   onAction,
 }: {
   message: ChatMessage;
   debug: boolean;
+  /** Whether the OpenAI Policy Inspector badge should be shown for this turn. */
+  policyMode?: boolean;
   /** Whether the inline preview for this message's title_offer card is shown. */
   previewOpen?: boolean;
   onAction: (action: AssistantAction, messageId: string) => void;
@@ -19,6 +23,13 @@ export function MessageBubble({
       <div className="col">
         {message.text && <div className={isUser ? "bubble" : "prose"}>{message.text}</div>}
         {message.card && <PeacockCard card={message.card} previewOpen={previewOpen} />}
+        {policyMode && !isUser && message.policy && (
+          <div className={`policy-badge policy-${message.policy}`} aria-label="OpenAI policy status">
+            <span className="policy-dot" aria-hidden="true" />
+            {policyLabelFor(message.policy)}
+            {message.policySource ? ` · ${message.policySource}` : ""}
+          </div>
+        )}
         {message.actions && message.actions.length > 0 && (
           <div className="actions">
             {message.actions.map((a, i) => (

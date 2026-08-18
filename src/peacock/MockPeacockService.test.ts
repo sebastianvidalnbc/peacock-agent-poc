@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { MockPeacockService } from "./MockPeacockService";
-import { PeacockActionUnavailableError, PeacockNotConnectedError } from "./types";
+import { PeacockNotConnectedError } from "./types";
+import {
+  PolicyClarificationRequiredError,
+  PolicyProhibitedError,
+} from "../policy/policy";
 import { prototypeStore } from "../state/prototype-store";
 
 const service = () => new MockPeacockService(prototypeStore);
@@ -75,15 +79,47 @@ describe("MockPeacockService", () => {
     expect(sub.billingProvider).toBe("apple");
   });
 
-  it("blocks simulated commerce for externally billed Taylor", async () => {
-    prototypeStore.connect("taylor");
+  it("policy-blocks every commerce method with zero mutation (RED confirm, YELLOW rest)", async () => {
+    prototypeStore.connect("alex");
     const svc = service();
-    await expect(svc.previewPlanChange("peacock_select")).rejects.toBeInstanceOf(
-      PeacockActionUnavailableError,
+    const before = await svc.getSubscription();
+    // Confirmed plan mutation is RED — hard prohibited.
+    await expect(svc.confirmPlanChange("pc_x")).rejects.toBeInstanceOf(
+      PolicyProhibitedError,
+    );
+    // Preview/cancel are YELLOW — unresolved, clarification required.
+    await expect(svc.previewPlanChange("peacock_premium_plus")).rejects.toBeInstanceOf(
+      PolicyClarificationRequiredError,
     );
     await expect(svc.previewCancellation()).rejects.toBeInstanceOf(
-      PeacockActionUnavailableError,
+      PolicyClarificationRequiredError,
     );
+    await expect(svc.confirmCancellation("cx_x")).rejects.toBeInstanceOf(
+      PolicyClarificationRequiredError,
+    );
+    // Nothing changed: subscription plan/status is untouched.
+    const after = await svc.getSubscription();
+    expect(after.plan.id).toBe(before.plan.id);
+    expect(after.status).toBe(before.status);
+  });
+
+  it("returns simulated Continue Watching (in-progress only) for Alex", async () => {
+    prototypeStore.connect("alex");
+    const cw = await service().getContinueWatching();
+    expect(cw.length).toBeGreaterThan(0);
+    expect(cw.every((v) => !v.completed)).toBe(true);
+    expect(cw.some((v) => v.contentId === "ttl_love_island_usa")).toBe(true);
+  });
+
+  it("returns a resume position and next episode for Love Island USA", async () => {
+    prototypeStore.connect("alex");
+    const svc = service();
+    const pos = await svc.getResumePosition("ttl_love_island_usa");
+    expect(pos?.progressSeconds).toBeGreaterThan(0);
+    expect(pos?.durationSeconds).toBeGreaterThan(pos!.progressSeconds);
+    const next = await svc.getNextEpisode("ttl_love_island_usa");
+    expect(next?.hasNext).toBe(true);
+    expect(next?.episodeNumber).toBe(12);
   });
 
   it("reports change_plan/cancel_subscription unavailable for Taylor", async () => {

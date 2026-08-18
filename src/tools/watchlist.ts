@@ -14,6 +14,8 @@ export const getWatchlistTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: true,
+  readOnlyHint: true,
+  openWorldHint: false,
   handler: (service) => service.getWatchlist(),
 });
 
@@ -27,6 +29,10 @@ export const addToWatchlistTool = defineTool({
   mutates: true,
   requiresConfirmation: false,
   requiresAuth: true,
+  readOnlyHint: false,
+  // A watchlist add is a reversible personal write, not a destructive update.
+  destructiveHint: false,
+  openWorldHint: true,
   handler: (service, input) => service.addToWatchlist(input.contentId),
 });
 
@@ -40,5 +46,9 @@ export const removeFromWatchlistTool = defineTool({
   mutates: true,
   requiresConfirmation: false,
   requiresAuth: true,
+  readOnlyHint: false,
+  // Reversible: the title can be re-added, so not a destructive update.
+  destructiveHint: false,
+  openWorldHint: true,
   handler: (service, input) => service.removeFromWatchlist(input.contentId),
 });

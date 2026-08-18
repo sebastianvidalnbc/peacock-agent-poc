@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   CatalogTitle,
+  NextEpisode,
   PlaybackDestination,
   PreviewInfo,
+  ViewingProgress,
 } from "../../peacock/types";
 import { CardShell } from "./CardShell";
 
@@ -199,6 +201,72 @@ export function HandoffCard({
     <CardShell title={`Opening ${title.title}`}>
       <p>Handing off to {destination.destination} to start playback.</p>
       <p className="meta">Simulated destination: {destination.destinationUrl}</p>
+    </CardShell>
+  );
+}
+
+/** One in-progress row: title, optional episode tag, progress bar, time left. */
+function ProgressRow({ v }: { v: ViewingProgress }) {
+  const pct = v.durationSeconds > 0
+    ? Math.min(100, Math.round((v.progressSeconds / v.durationSeconds) * 100))
+    : 0;
+  const remaining = Math.max(0, v.durationSeconds - v.progressSeconds);
+  const ep =
+    v.seasonNumber != null && v.episodeNumber != null
+      ? ` · S${v.seasonNumber} E${v.episodeNumber}`
+      : "";
+  return (
+    <div className="cw-row">
+      <div className="cw-row-head">
+        <span className="cw-title">{v.title}</span>
+        <span className="meta">
+          {v.completed ? "Finished" : `${formatTime(remaining)} left`}
+        </span>
+      </div>
+      {(v.episodeTitle || ep) && (
+        <div className="meta">
+          {ep.replace(/^ · /, "")}
+          {v.episodeTitle ? `${ep ? " · " : ""}"${v.episodeTitle}"` : ""}
+        </div>
+      )}
+      <div
+        className="preview-timeline cw-bar"
+        role="progressbar"
+        aria-label={`${v.title} watched`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+      >
+        <span className="preview-fill" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Continue Watching artifact: one or more in-progress titles with a resume
+ * position, plus an optional "next episode" line. Read-only view of simulated
+ * viewing state — the Resume action lives in the message action row.
+ */
+export function ContinueWatchingCard({
+  items,
+  nextEpisode,
+}: {
+  items: ViewingProgress[];
+  nextEpisode?: NextEpisode;
+}) {
+  return (
+    <CardShell title="Continue Watching">
+      {items.length === 0 ? (
+        <p className="meta">Nothing in progress right now.</p>
+      ) : (
+        items.map((v) => <ProgressRow key={v.contentId} v={v} />)
+      )}
+      {nextEpisode?.hasNext && (
+        <p className="meta cw-next">
+          Next up: S{nextEpisode.seasonNumber} E{nextEpisode.episodeNumber} · "{nextEpisode.episodeTitle}"
+        </p>
+      )}
     </CardShell>
   );
 }

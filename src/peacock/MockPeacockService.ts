@@ -1,6 +1,5 @@
 import type { PeacockService } from "./PeacockService";
 import {
-  PeacockActionUnavailableError,
   PeacockNotConnectedError,
   type AccountSummary,
   type ActionResult,
@@ -9,15 +8,19 @@ import {
   type CatalogTitle,
   type TitleAvailability,
   type Entitlements,
+  type NextEpisode,
   type PlanChangePreview,
   type PlaybackDestination,
   type PreviewInfo,
   type Subscription,
+  type ViewingProgress,
 } from "./types";
+import { PolicyClarificationRequiredError, PolicyProhibitedError } from "../policy/policy";
 import { getPersonaFixture } from "../data/personas";
 import { getPlan } from "../data/plans";
 import {
   findTitleById,
+  getNextEpisodeData,
   getPlaybackData,
   getPreviewData,
   searchCatalogData,
@@ -26,16 +29,8 @@ import { prototypeStore } from "../state/prototype-store";
 
 type Store = typeof prototypeStore;
 
-interface Pending {
-  kind: "plan_change" | "cancellation";
-  personaId: string;
-  targetPlanId?: string;
-}
-
 /** In-memory Peacock behaviour backed by fixtures + the prototype store. */
 export class MockPeacockService implements PeacockService {
-  private pending = new Map<string, Pending>();
-
   constructor(private store: Store = prototypeStore) {}
 
   isConnected(): boolean {
@@ -174,61 +169,51 @@ export class MockPeacockService implements PeacockService {
     return getPlaybackData(contentId);
   }
 
-  private assertManageable(): string {
+  // Simulated viewing state (Continue Watching / resume / history). Read-only:
+  // sourced directly from persona fixtures, never mutated by this prototype.
+
+  async getViewingHistory(): Promise<ViewingProgress[]> {
     const id = this.requirePersona();
-    const f = getPersonaFixture(id);
-    if (f.billingProvider === "apple")
-      throw new PeacockActionUnavailableError(
-        "This subscription is billed through Apple and cannot be changed here.",
-      );
-    if (this.store.getOverlay(id).status !== "active")
-      throw new PeacockActionUnavailableError("There is no active subscription to change.");
-    return id;
+    return [...getPersonaFixture(id).viewing];
   }
 
-  async previewPlanChange(targetPlanId: string): Promise<PlanChangePreview> {
-    const id = this.assertManageable();
-    const target = getPlan(targetPlanId);
-    const o = this.store.getOverlay(id);
-    const previewId = `pc_${Date.now()}`;
-    this.pending.set(previewId, { kind: "plan_change", personaId: id, targetPlanId });
-    return {
-      previewId,
-      targetPlan: target,
-      currentPlanName: getPlan(o.planId).name,
-      priceLabel: `$${target.priceMonthly.toFixed(2)}/mo`,
-      effectiveDate: this.futureDate(o.billingInterval),
-      note: "Simulated plan change for concept evaluation only.",
-    };
+  async getContinueWatching(): Promise<ViewingProgress[]> {
+    const id = this.requirePersona();
+    // "Continue Watching" is the in-progress subset, newest first.
+    return getPersonaFixture(id).viewing.filter((v) => !v.completed);
   }
 
-  async confirmPlanChange(previewId: string): Promise<ActionResult> {
-    const p = this.pending.get(previewId);
-    if (!p || p.kind !== "plan_change" || !p.targetPlanId)
-      return { success: false, message: "That plan-change preview has expired." };
-    this.store.setSubscription(p.personaId, { planId: p.targetPlanId });
-    this.pending.delete(previewId);
-    return { success: true, message: `Plan changed to ${getPlan(p.targetPlanId).name} (simulated).` };
+  async getResumePosition(contentId: string): Promise<ViewingProgress | null> {
+    const id = this.requirePersona();
+    return getPersonaFixture(id).viewing.find((v) => v.contentId === contentId) ?? null;
+  }
+
+  async getNextEpisode(contentId: string): Promise<NextEpisode | null> {
+    this.requirePersona();
+    return getNextEpisodeData(contentId);
+  }
+
+  // Simulated commerce — policy-blocked. Under current OpenAI plugin guidance
+  // these never run: each hard-throws and mutates nothing. confirmPlanChange is
+  // a confirmed plan mutation (RED); the rest are unresolved subscription-
+  // management actions (YELLOW). The RED vs YELLOW user-facing distinction is
+  // enforced at the agent/intent layer; here the service is the last-line
+  // guarantee that no commerce state can ever change.
+
+  async previewPlanChange(_targetPlanId: string): Promise<PlanChangePreview> {
+    throw new PolicyClarificationRequiredError();
+  }
+
+  async confirmPlanChange(_previewId: string): Promise<ActionResult> {
+    throw new PolicyProhibitedError();
   }
 
   async previewCancellation(): Promise<CancellationPreview> {
-    const id = this.assertManageable();
-    const previewId = `cx_${Date.now()}`;
-    this.pending.set(previewId, { kind: "cancellation", personaId: id });
-    return {
-      previewId,
-      accessUntil: this.futureDate(this.store.getOverlay(id).billingInterval),
-      note: "Simulated cancellation for concept evaluation only.",
-    };
+    throw new PolicyClarificationRequiredError();
   }
 
-  async confirmCancellation(previewId: string): Promise<ActionResult> {
-    const p = this.pending.get(previewId);
-    if (!p || p.kind !== "cancellation")
-      return { success: false, message: "That cancellation preview has expired." };
-    this.store.setSubscription(p.personaId, { status: "cancelled" });
-    this.pending.delete(previewId);
-    return { success: true, message: "Subscription cancelled (simulated)." };
+  async confirmCancellation(_previewId: string): Promise<ActionResult> {
+    throw new PolicyClarificationRequiredError();
   }
 }
 

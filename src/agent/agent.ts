@@ -4,7 +4,12 @@ import { mockDiscoveryService } from "../discovery/MockDiscoveryService";
 import { runTool, type ServiceContext } from "../tools";
 import { routeIntent, detectGenre, type Intent } from "./intent-router";
 import { ConversationState } from "./conversation-state";
-import { COMMERCE_DISCLAIMER, UNSUPPORTED_MESSAGE } from "./capabilities";
+import {
+  COMMERCE_CLARIFY_MESSAGE,
+  COMMERCE_PROHIBITED_MESSAGE,
+  PLANS_INFO_URL,
+  UNSUPPORTED_MESSAGE,
+} from "./capabilities";
 import { resolveTitleByName, providerLabel, findTitleById, type KnownProvider } from "../data/catalog";
 import { PeacockActionUnavailableError, PeacockNotConnectedError } from "../peacock/types";
 import type {
@@ -12,11 +17,14 @@ import type {
   Capability,
   CatalogTitle,
   Entitlements,
+  NextEpisode,
   PlaybackDestination,
   PreviewInfo,
   Subscription,
   TitleAvailability,
+  ViewingProgress,
 } from "../peacock/types";
+import { POLICY_MAP, type PolicyCapabilityId, type PolicyStatus } from "../policy/policy";
 import type { AgentResponse, AssistantAction, DebugTrace, DiscoveryRow } from "./types";
 
 const ADS: Record<string, string> = {
@@ -129,6 +137,21 @@ export class Agent {
     return { id: "open", kind: "open", label, contentId };
   }
 
+  /** A "resume from where you left off" action (maps to playback in the app). */
+  private resumeAction(contentId: string, label: string): AssistantAction {
+    return { id: "resume", kind: "resume", label, contentId };
+  }
+
+  /**
+   * Policy metadata for a turn, looked up from the single POLICY_MAP source of
+   * truth. Spread onto an AgentResponse so the Policy Inspector can badge it.
+   * Client-side chrome only — never part of tool output.
+   */
+  private policy(id: PolicyCapabilityId): { policy: PolicyStatus; policySource: string } {
+    const entry = POLICY_MAP[id];
+    return { policy: entry.status, policySource: entry.source };
+  }
+
   private connectPrompt(resumeText: string): AgentResponse {
     return {
       text: "To do that I need to connect to your Peacock account. This is a simulated connection — I won't ask for a username, password, or payment details.",
@@ -226,8 +249,24 @@ export class Agent {
         return this.handleRecommend(intent.criteria);
       case "search_catalog":
         return this.handleSearch(intent.query.trim());
-      case "commerce_info":
-        return { text: `${this.commerceLead(intent.topic)} ${COMMERCE_DISCLAIMER}` };
+      case "commerce_prohibited":
+        return this.handleCommerceProhibited(intent.topic);
+      case "commerce_clarify":
+        return this.handleCommerceClarify(intent.topic);
+      case "plan_gap":
+        return this.handlePlanGap(intent.benefit, input);
+      case "viewing_history":
+        return this.handleViewingHistory(input);
+      case "continue_watching":
+        return this.handleContinueWatching(input);
+      case "resume_last":
+        return this.handleResumeLast(input);
+      case "resume_title":
+        return this.handleResumeTitle(intent.contentId, input);
+      case "next_episode":
+        return this.handleNextEpisode(intent.contentId, input);
+      case "unfinished":
+        return this.handleUnfinished(input);
       case "needs_title_clarification":
         return {
           text: "Which show or movie do you mean? Tell me the title and I'll check where you can watch it.",
@@ -299,10 +338,119 @@ export class Agent {
     };
   }
 
-  private commerceLead(topic: "cancel" | "downgrade" | "upgrade" | "ads"): string {
-    if (topic === "cancel") return "Cancelling your subscription would be a simulated action.";
-    if (topic === "ads") return "Getting fewer ads would mean changing to a higher plan, which is a simulated action.";
-    return `A plan ${topic} would be a simulated action.`;
+  /**
+   * RED — a prohibited commerce request (upgrade, new subscription,
+   * reactivation, display-plans, checkout). The assistant refuses with an
+   * explanation and offers only read-only alternatives. It calls no service
+   * method, so no state can change. Tagged RED for the Policy Inspector.
+   */
+  private handleCommerceProhibited(
+    topic: "upgrade" | "new_subscription" | "reactivation" | "display_plans" | "checkout",
+  ): AgentResponse {
+    const capabilityByTopic: Record<typeof topic, PolicyCapabilityId> = {
+      upgrade: "upgrade",
+      new_subscription: "new_subscription",
+      reactivation: "reactivation",
+      display_plans: "display_plans",
+      checkout: "digital_checkout",
+    };
+    return {
+      text: COMMERCE_PROHIBITED_MESSAGE[topic],
+      ...this.policy(capabilityByTopic[topic]),
+    };
+  }
+
+  /**
+   * YELLOW — a subscription-management action (cancel / downgrade / pause) that
+   * current OpenAI guidance does not resolve. The assistant explains the
+   * clarification gap and does not action it. No service call, no mutation.
+   * Tagged YELLOW for the Policy Inspector.
+   */
+  private handleCommerceClarify(topic: "cancel" | "downgrade" | "pause"): AgentResponse {
+    return {
+      text: COMMERCE_CLARIFY_MESSAGE[topic],
+      ...this.policy(topic),
+    };
+  }
+
+  /**
+   * GREEN — an entitlement-gap explanation. The user asks about a benefit their
+   * plan lacks; the assistant reads (read-only) entitlements, explains whether
+   * the current plan already includes it or a higher plan would, and offers an
+   * informational plans link. It never starts a checkout or displays plans for
+   * selection. Requires a connection to read the account's entitlements.
+   */
+  private async handlePlanGap(
+    benefit: "ads" | "downloads" | "quality" | "streams",
+    input: string,
+  ): Promise<AgentResponse> {
+    const g = this.guard(input);
+    if (g) return g;
+    const e = await runTool<Entitlements>(this.service, "get_entitlements");
+    const has = this.entitlementCovers(benefit, e);
+    const lead = has
+      ? this.planGapAlreadyHave(benefit, e)
+      : this.planGapMissing(benefit);
+    // The plans link is informational only — never a checkout or selection UI.
+    const actions: AssistantAction[] = has
+      ? []
+      : [{ id: "plans_info", kind: "plans_info", label: "Learn about Peacock plans", resumeText: PLANS_INFO_URL }];
+    return {
+      text: lead,
+      card: { kind: "entitlements", data: e },
+      toolName: "get_entitlements",
+      actions: actions.length ? actions : undefined,
+      ...this.policy("entitlement_gap"),
+    };
+  }
+
+  /** Whether the current entitlements already cover the asked-about benefit. */
+  private entitlementCovers(
+    benefit: "ads" | "downloads" | "quality" | "streams",
+    e: Entitlements,
+  ): boolean {
+    switch (benefit) {
+      case "ads":
+        return e.adsLevel === "no_ads";
+      case "downloads":
+        return e.downloads;
+      case "quality":
+        return e.maxVideoQuality === "4K";
+      case "streams":
+        return e.simultaneousStreams >= 3;
+    }
+  }
+
+  /** GREEN copy when the account already has the benefit. */
+  private planGapAlreadyHave(
+    benefit: "ads" | "downloads" | "quality" | "streams",
+    e: Entitlements,
+  ): string {
+    switch (benefit) {
+      case "ads":
+        return `Good news — your ${e.planName} plan already streams with no ads.`;
+      case "downloads":
+        return `Your ${e.planName} plan already includes downloads for offline viewing.`;
+      case "quality":
+        return `Your ${e.planName} plan already supports up to 4K video.`;
+      case "streams":
+        return `Your ${e.planName} plan already supports ${e.simultaneousStreams} simultaneous streams.`;
+    }
+  }
+
+  /**
+   * GREEN copy when the benefit is missing. Explains that a higher plan
+   * includes it, conservatively (no specific tier name, no price, no plan
+   * comparison), and defers any change to Peacock. No checkout is offered.
+   */
+  private planGapMissing(benefit: "ads" | "downloads" | "quality" | "streams"): string {
+    const what: Record<typeof benefit, string> = {
+      ads: "ad-free streaming",
+      downloads: "downloads for offline viewing",
+      quality: "4K video",
+      streams: "more simultaneous streams",
+    };
+    return `Your current plan doesn't include ${what[benefit]} — a higher Peacock plan does. I can't change plans or take payment from here, but you can review the options and upgrade directly in Peacock.`;
   }
 
   private async handleWatchlistWrite(titleQuery: string, input: string, add: boolean): Promise<AgentResponse> {
@@ -624,5 +772,153 @@ export class Agent {
       card: { kind: "title", data: title },
       toolName: "get_title_details",
     };
+  }
+
+  // --- Continue Watching / resume / viewing history (GREEN account reads) ---
+
+  /** Format a title's resume position as a short "X min left" phrase. */
+  private remainingLabel(v: ViewingProgress): string {
+    const remaining = Math.max(0, v.durationSeconds - v.progressSeconds);
+    const mins = Math.round(remaining / 60);
+    if (v.completed) return "finished";
+    return mins <= 1 ? "about a minute left" : `about ${mins} min left`;
+  }
+
+  /** A compact "S2 E6" episode tag when the item is an episode. */
+  private episodeTag(v: ViewingProgress): string {
+    if (v.seasonNumber != null && v.episodeNumber != null) {
+      const ep = v.episodeTitle ? ` "${v.episodeTitle}"` : "";
+      return ` (S${v.seasonNumber} E${v.episodeNumber}${ep})`;
+    }
+    return "";
+  }
+
+  /** Build a Continue Watching card + resume action for a set of items. */
+  private async continueWatchingCard(
+    items: ViewingProgress[],
+    text: string,
+    nextEpisode?: NextEpisode,
+  ): Promise<AgentResponse> {
+    const anchor = items[0];
+    const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId: anchor.contentId });
+    this.ctx.setLastTitle(anchor.contentId);
+    return {
+      text,
+      card: { kind: "continue_watching", items, title, nextEpisode },
+      actions: [this.resumeAction(anchor.contentId, `Resume ${anchor.title}`)],
+      toolName: "get_continue_watching",
+      ...this.policy("continue_watching"),
+    };
+  }
+
+  /** "What was I watching?" — viewing history (in-progress and completed). */
+  private async handleViewingHistory(input: string): Promise<AgentResponse> {
+    const g = this.guard(input);
+    if (g) return g;
+    const items = await runTool<ViewingProgress[]>(this.service, "get_viewing_history");
+    if (!items.length)
+      return { text: "You don't have any viewing history on this demo account yet.", ...this.policy("viewing_history") };
+    const lines = items
+      .map((v) => `• ${v.title}${this.episodeTag(v)} — ${this.remainingLabel(v)}`)
+      .join("\n");
+    return {
+      text: `Here's what you've been watching:\n${lines}`,
+      card: { kind: "continue_watching", items, title: await runTool<CatalogTitle>(this.service, "get_title_details", { contentId: items[0].contentId }) },
+      toolName: "get_viewing_history",
+      actions: [this.resumeAction(items[0].contentId, `Resume ${items[0].title}`)],
+      ...this.policy("viewing_history"),
+    };
+  }
+
+  /** "Show my Continue Watching" — the in-progress rail. */
+  private async handleContinueWatching(input: string): Promise<AgentResponse> {
+    const g = this.guard(input);
+    if (g) return g;
+    const items = await runTool<ViewingProgress[]>(this.service, "get_continue_watching");
+    if (!items.length)
+      return { text: "You don't have anything in progress right now. Want a recommendation?", ...this.policy("continue_watching") };
+    const names = items.map((v) => v.title).join(", ");
+    return this.continueWatchingCard(items, `Here's your Continue Watching: ${names}.`);
+  }
+
+  /** "Resume my last show" — the single most recent in-progress title. */
+  private async handleResumeLast(input: string): Promise<AgentResponse> {
+    const g = this.guard(input);
+    if (g) return g;
+    const items = await runTool<ViewingProgress[]>(this.service, "get_continue_watching");
+    if (!items.length)
+      return { text: "You don't have anything in progress to resume right now.", ...this.policy("continue_watching") };
+    const last = items[0];
+    return this.continueWatchingCard(
+      [last],
+      `Picking up ${last.title}${this.episodeTag(last)} — ${this.remainingLabel(last)}.`,
+    );
+  }
+
+  /** "Continue X" / "Where did I leave off in X?" — resume a specific title. */
+  private async handleResumeTitle(contentId: string | undefined, input: string): Promise<AgentResponse> {
+    const g = this.guard(input);
+    if (g) return g;
+    const id = this.resolveContextTitle(contentId);
+    if (!id)
+      return { text: "Which show would you like to resume? Tell me the title and I'll pick up where you left off." };
+    const pos = await runTool<ViewingProgress | null>(this.service, "get_resume_position", { contentId: id });
+    if (!pos) {
+      const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId: id });
+      this.ctx.setLastTitle(id);
+      return {
+        text: `You don't have a saved position for ${title.title} — you can start it from the beginning.`,
+        card: { kind: "title", data: title },
+        toolName: "get_resume_position",
+        ...this.policy("continue_watching"),
+      };
+    }
+    return this.continueWatchingCard(
+      [pos],
+      `Resuming ${pos.title}${this.episodeTag(pos)} — ${this.remainingLabel(pos)}.`,
+    );
+  }
+
+  /** "What's next in X?" — next-episode lookup for a series. */
+  private async handleNextEpisode(contentId: string | undefined, input: string): Promise<AgentResponse> {
+    const g = this.guard(input);
+    if (g) return g;
+    const id = this.resolveContextTitle(contentId);
+    if (!id)
+      return { text: "Which series do you mean? Tell me the title and I'll tell you what's next." };
+    const next = await runTool<NextEpisode | null>(this.service, "get_next_episode", { contentId: id });
+    const title = await runTool<CatalogTitle>(this.service, "get_title_details", { contentId: id });
+    this.ctx.setLastTitle(id);
+    if (!next || !next.hasNext) {
+      return {
+        text: `There's no next episode of ${title.title} in this demo — you're all caught up.`,
+        card: { kind: "title", data: title },
+        toolName: "get_next_episode",
+        ...this.policy("continue_watching"),
+      };
+    }
+    const pos = await runTool<ViewingProgress | null>(this.service, "get_resume_position", { contentId: id });
+    const items = pos ? [pos] : [];
+    const text = `Next up in ${next.title} is S${next.seasonNumber} E${next.episodeNumber} "${next.episodeTitle}".`;
+    if (!items.length) {
+      return {
+        text,
+        card: { kind: "title", data: title },
+        toolName: "get_next_episode",
+        ...this.policy("continue_watching"),
+      };
+    }
+    return this.continueWatchingCard(items, text, next);
+  }
+
+  /** "Show me things I haven't finished" — the unfinished (in-progress) subset. */
+  private async handleUnfinished(input: string): Promise<AgentResponse> {
+    const g = this.guard(input);
+    if (g) return g;
+    const items = await runTool<ViewingProgress[]>(this.service, "get_continue_watching");
+    if (!items.length)
+      return { text: "You've finished everything you've started — nice. Want a recommendation for something new?", ...this.policy("continue_watching") };
+    const names = items.map((v) => `${v.title} (${this.remainingLabel(v)})`).join(", ");
+    return this.continueWatchingCard(items, `Here's what you haven't finished yet: ${names}.`);
   }
 }

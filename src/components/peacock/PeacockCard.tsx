@@ -7,6 +7,7 @@ import {
 } from "./AccountCards";
 import {
   ConnectCard,
+  ContinueWatchingCard,
   HandoffCard,
   SearchCard,
   TitleCard,
@@ -53,6 +54,8 @@ export function PeacockCard({
       );
     case "discovery":
       return <DiscoveryCard rows={card.rows} connected={card.connected} />;
+    case "continue_watching":
+      return <ContinueWatchingCard items={card.items} nextEpisode={card.nextEpisode} />;
     case "connect":
       return <ConnectCard />;
     default:

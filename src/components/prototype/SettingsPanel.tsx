@@ -17,8 +17,10 @@ export function SettingsPanel({
   open,
   connectedPersonaId,
   debug,
+  policyMode,
   onSelectPersona,
   onToggleDebug,
+  onTogglePolicy,
   onDisconnect,
   onReset,
   onClear,
@@ -28,8 +30,11 @@ export function SettingsPanel({
   open: boolean;
   connectedPersonaId: string | null;
   debug: boolean;
+  /** Whether the OpenAI Policy Inspector badges are shown on assistant turns. */
+  policyMode: boolean;
   onSelectPersona: (personaId: string) => void;
   onToggleDebug: () => void;
+  onTogglePolicy: () => void;
   onDisconnect: () => void;
   onReset: () => void;
   onClear: () => void;
@@ -158,6 +163,14 @@ export function SettingsPanel({
               <input type="checkbox" checked={debug} onChange={onToggleDebug} />
               <span>Show tool activity in replies</span>
             </label>
+            <label className="toggle">
+              <input type="checkbox" checked={policyMode} onChange={onTogglePolicy} />
+              <span>Show OpenAI policy status</span>
+            </label>
+            <p className="note">
+              Tags each assistant reply GREEN / YELLOW / RED against OpenAI's published plugin
+              guidance, for stakeholder review.
+            </p>
           </section>
 
           <section className="settings-section">

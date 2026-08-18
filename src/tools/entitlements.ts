@@ -15,6 +15,8 @@ export const getEntitlementsTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: true,
+  readOnlyHint: true,
+  openWorldHint: false,
   handler: (service) => service.getEntitlements(),
 });
 
@@ -28,5 +30,7 @@ export const getSupportedCapabilitiesTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  readOnlyHint: true,
+  openWorldHint: false,
   handler: (service) => service.getSupportedCapabilities(),
 });

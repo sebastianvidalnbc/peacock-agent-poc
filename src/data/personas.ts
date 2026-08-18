@@ -2,6 +2,7 @@ import type {
   BillingInterval,
   BillingProvider,
   SubscriptionStatus,
+  ViewingProgress,
   WatchHistoryEntry,
 } from "../peacock/types";
 
@@ -21,6 +22,11 @@ export interface PersonaFixture {
   status: SubscriptionStatus;
   watchlist: string[];
   watchHistory: WatchHistoryEntry[];
+  /**
+   * Simulated per-title viewing progress, newest first. Drives Continue
+   * Watching / resume / viewing-history reads. Read-only in this prototype.
+   */
+  viewing: ViewingProgress[];
   blurb: string;
 }
 
@@ -39,6 +45,38 @@ export const PERSONAS: Record<string, PersonaFixture> = {
       { contentId: "ttl_laugh_track_city", title: "Laugh Track City", watchedOn: "2024-11-02", progressPct: 100 },
       { contentId: "ttl_paper_kingdoms", title: "Paper Kingdoms", watchedOn: "2024-11-20", progressPct: 42 },
     ],
+    viewing: [
+      {
+        contentId: "ttl_love_island_usa",
+        title: "Love Island USA",
+        seasonNumber: 8,
+        episodeNumber: 11,
+        episodeTitle: "Recoupling Night",
+        progressSeconds: 1180,
+        durationSeconds: 2640,
+        completed: false,
+        lastWatchedAt: "2024-12-04",
+      },
+      {
+        contentId: "ttl_paper_kingdoms",
+        title: "Paper Kingdoms",
+        progressSeconds: 2830,
+        durationSeconds: 6720,
+        completed: false,
+        lastWatchedAt: "2024-11-20",
+      },
+      {
+        contentId: "ttl_laugh_track_city",
+        title: "Laugh Track City",
+        seasonNumber: 2,
+        episodeNumber: 6,
+        episodeTitle: "The Pledge Drive",
+        progressSeconds: 1500,
+        durationSeconds: 1500,
+        completed: true,
+        lastWatchedAt: "2024-11-02",
+      },
+    ],
     blurb: "Mid-tier plan · billed by Peacock · ads · no downloads",
   },
   jordan: {
@@ -53,6 +91,27 @@ export const PERSONAS: Record<string, PersonaFixture> = {
     watchlist: ["ttl_deep_space_diner", "ttl_stellar_bake_off", "ttl_paper_kingdoms"],
     watchHistory: [
       { contentId: "ttl_summit_run", title: "Summit Run", watchedOn: "2024-10-15", progressPct: 100 },
+    ],
+    viewing: [
+      {
+        contentId: "ttl_deep_space_diner",
+        title: "Deep Space Diner",
+        seasonNumber: 1,
+        episodeNumber: 4,
+        episodeTitle: "Table for None",
+        progressSeconds: 640,
+        durationSeconds: 1620,
+        completed: false,
+        lastWatchedAt: "2024-12-02",
+      },
+      {
+        contentId: "ttl_summit_run",
+        title: "Summit Run",
+        progressSeconds: 5940,
+        durationSeconds: 5940,
+        completed: true,
+        lastWatchedAt: "2024-10-15",
+      },
     ],
     blurb: "Top-tier plan · billed by Peacock · fewer ads · downloads · annual",
   },
@@ -69,6 +128,16 @@ export const PERSONAS: Record<string, PersonaFixture> = {
     watchHistory: [
       { contentId: "ttl_deep_space_diner", title: "Deep Space Diner", watchedOn: "2024-12-01", progressPct: 66 },
     ],
+    viewing: [
+      {
+        contentId: "ttl_the_understudy",
+        title: "The Understudy",
+        progressSeconds: 2100,
+        durationSeconds: 5400,
+        completed: false,
+        lastWatchedAt: "2024-12-05",
+      },
+    ],
     blurb: "Active plan · billed externally through Apple · some actions unavailable",
   },
   morgan: {
@@ -84,6 +153,19 @@ export const PERSONAS: Record<string, PersonaFixture> = {
     watchHistory: [
       { contentId: "ttl_midnight_harbor", title: "Midnight Harbor", watchedOn: "2023-08-11", progressPct: 100 },
       { contentId: "ttl_the_understudy", title: "The Understudy", watchedOn: "2023-09-03", progressPct: 88 },
+    ],
+    viewing: [
+      {
+        contentId: "ttl_midnight_harbor",
+        title: "Midnight Harbor",
+        seasonNumber: 1,
+        episodeNumber: 8,
+        episodeTitle: "Last Light",
+        progressSeconds: 3120,
+        durationSeconds: 3120,
+        completed: true,
+        lastWatchedAt: "2023-08-11",
+      },
     ],
     blurb: "Previously subscribed · currently lapsed · has prior watch history",
   },

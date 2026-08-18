@@ -3,11 +3,14 @@ import type {
   Capability,
   CatalogTitle,
   Entitlements,
+  NextEpisode,
   PlaybackDestination,
   PreviewInfo,
   Subscription,
   TitleAvailability,
+  ViewingProgress,
 } from "../peacock/types";
+import type { PolicyStatus } from "../policy/policy";
 
 /**
  * A cross-service availability row as rendered in the UI: the raw title plus a
@@ -46,6 +49,17 @@ export type PeacockCard =
   | { kind: "where_to_watch"; data: TitleAvailability; ownedOnPeacock: boolean; connected: boolean }
   /** A cross-service discovery result: several titles with availability. */
   | { kind: "discovery"; rows: DiscoveryRow[]; connected: boolean }
+  /**
+   * Continue Watching / resume: one or more in-progress titles from the
+   * connected account's simulated viewing state, with a resume call to action.
+   * `nextEpisode` is populated for a "what's next in X?" answer.
+   */
+  | {
+      kind: "continue_watching";
+      items: ViewingProgress[];
+      title: CatalogTitle;
+      nextEpisode?: NextEpisode;
+    }
   | { kind: "connect" };
 
 /**
@@ -55,11 +69,11 @@ export type PeacockCard =
  */
 export interface AssistantAction {
   id: string;
-  kind: "connect" | "preview" | "open";
+  kind: "connect" | "preview" | "open" | "resume" | "plans_info";
   label: string;
   /** Original user text to re-run automatically once connected. */
   resumeText?: string;
-  /** Title the action applies to (for preview/open). */
+  /** Title the action applies to (for preview/open/resume). */
   contentId?: string;
 }
 
@@ -85,6 +99,13 @@ export interface AgentResponse {
   toolName?: string;
   /** Debug-only routing trace, populated by the agent for the intent inspector. */
   debug?: DebugTrace;
+  /**
+   * Policy Inspector classification for this turn (client-side chrome only).
+   * Never included in MCP structured tool output.
+   */
+  policy?: PolicyStatus;
+  /** Governing OpenAI doc identifier for the policy status, when known. */
+  policySource?: string;
 }
 
 export type ChatRole = "user" | "assistant";
@@ -99,4 +120,8 @@ export interface ChatMessage {
   toolName?: string;
   /** Debug-only routing trace, shown in the intent inspector when debug is on. */
   debug?: DebugTrace;
+  /** Policy Inspector classification for this turn (client-side chrome only). */
+  policy?: PolicyStatus;
+  /** Governing OpenAI doc identifier for the policy status, when known. */
+  policySource?: string;
 }

@@ -11,5 +11,7 @@ export const getAccountSummaryTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: true,
+  readOnlyHint: true,
+  openWorldHint: false,
   handler: (service) => service.getAccountSummary(),
 });

@@ -21,6 +21,12 @@ import {
   getWhereToWatchTool,
   searchAcrossServicesTool,
 } from "./discovery";
+import {
+  getContinueWatchingTool,
+  getNextEpisodeTool,
+  getResumePositionTool,
+  getViewingHistoryTool,
+} from "./viewing";
 
 export type { ToolDefinition } from "./tool";
 
@@ -51,6 +57,10 @@ export const TOOLS: ToolDefinition<any, any, any>[] = [
   searchAcrossServicesTool,
   getWhereToWatchTool,
   getRecommendationsTool,
+  getViewingHistoryTool,
+  getContinueWatchingTool,
+  getResumePositionTool,
+  getNextEpisodeTool,
 ];
 
 const TOOLS_BY_NAME: Record<string, ToolDefinition<any, any, any>> =

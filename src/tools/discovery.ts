@@ -25,6 +25,9 @@ export const searchAcrossServicesTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  readOnlyHint: true,
+  // Provider-neutral discovery reaches across external services.
+  openWorldHint: true,
   handler: (service, input) => service.searchAcrossServices(input.query),
 });
 
@@ -39,6 +42,8 @@ export const getWhereToWatchTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  readOnlyHint: true,
+  openWorldHint: true,
   handler: (service, input) => service.getWhereToWatch(input.contentId),
 });
 
@@ -53,5 +58,7 @@ export const getRecommendationsTool = defineTool({
   mutates: false,
   requiresConfirmation: false,
   requiresAuth: false,
+  readOnlyHint: true,
+  openWorldHint: true,
   handler: (service, input) => service.getRecommendations(input.genre),
 });

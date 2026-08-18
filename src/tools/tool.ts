@@ -42,6 +42,20 @@ export interface ToolDefinition<I = unknown, O = unknown, T extends ToolTarget =
   requiresConfirmation: boolean;
   /** Whether a connected Peacock persona is required to run this tool. */
   requiresAuth: boolean;
+  /**
+   * MCP tool annotations (hints). These mirror the Model Context Protocol tool
+   * annotations a real server would advertise and are surfaced by the prototype
+   * for policy review:
+   *  - readOnlyHint: the tool does not modify its environment (all reads).
+   *  - destructiveHint: a mutating tool performs a destructive/irreversible
+   *    update. Watchlist writes are reversible, so this is false for them.
+   *  - openWorldHint: the tool interacts with an external/open world beyond the
+   *    Peacock account (cross-service discovery, playback handoff).
+   * All are optional; omit when not meaningful for a tool.
+   */
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  openWorldHint?: boolean;
   /** Runs the tool against the service for its target. */
   handler: (service: ServiceForTarget<T>, input: I) => Promise<O>;
 }

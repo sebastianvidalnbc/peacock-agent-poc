@@ -5,10 +5,12 @@ import type {
   Capability,
   CatalogTitle,
   Entitlements,
+  NextEpisode,
   PlanChangePreview,
   PlaybackDestination,
   PreviewInfo,
   Subscription,
+  ViewingProgress,
 } from "./types";
 
 /**
@@ -30,6 +32,12 @@ export interface PeacockService {
   getEntitlements(): Promise<Entitlements>;
   getWatchlist(): Promise<CatalogTitle[]>;
 
+  // Read-only, personal — simulated viewing state (Continue Watching / resume)
+  getViewingHistory(): Promise<ViewingProgress[]>;
+  getContinueWatching(): Promise<ViewingProgress[]>;
+  getResumePosition(contentId: string): Promise<ViewingProgress | null>;
+  getNextEpisode(contentId: string): Promise<NextEpisode | null>;
+
   // Read-only, general (no connection required)
   getSupportedCapabilities(): Promise<Capability[]>;
   searchCatalog(query: string): Promise<CatalogTitle[]>;
@@ -41,8 +49,11 @@ export interface PeacockService {
   addToWatchlist(contentId: string): Promise<CatalogTitle[]>;
   removeFromWatchlist(contentId: string): Promise<CatalogTitle[]>;
 
-  // Simulated commerce (defined for contract parity; not wired into Phase 1
-  // tools/agent). Prototype capability only — not an OpenAI production policy.
+  // Simulated commerce (defined for contract parity only). Under current OpenAI
+  // plugin guidance these are policy-blocked: every method hard-throws and
+  // mutates nothing. confirmPlanChange throws PolicyProhibitedError (RED);
+  // the rest throw PolicyClarificationRequiredError (YELLOW). RED vs YELLOW is
+  // decided at the agent/intent layer; the service guarantees zero mutation.
   previewPlanChange(targetPlanId: string): Promise<PlanChangePreview>;
   confirmPlanChange(previewId: string): Promise<ActionResult>;
   previewCancellation(): Promise<CancellationPreview>;

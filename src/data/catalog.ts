@@ -1,5 +1,6 @@
 import type {
   Availability,
+  NextEpisode,
   PlaybackDestination,
   PreviewInfo,
   StreamingProvider,
@@ -408,6 +409,13 @@ const PREVIEWS: Record<string, PreviewInfo> = {
     durationSeconds: 30,
     previewSource: "mock://preview/love-island-usa",
   },
+  ttl_poker_face: {
+    contentId: "ttl_poker_face",
+    previewAvailable: true,
+    previewType: "trailer",
+    durationSeconds: 45,
+    previewSource: "mock://preview/poker-face",
+  },
 };
 
 export function getPreviewData(contentId: string): PreviewInfo {
@@ -446,4 +454,34 @@ export function getPlaybackData(contentId: string): PlaybackDestination {
       actionLabel: "Open in Peacock",
     }
   );
+}
+
+/**
+ * Simulated next-episode lookup for series, keyed by contentId. Answers
+ * "what's next in X?" for Continue Watching. `hasNext: false` marks a series
+ * whose demo data has no further episode after the user's last-watched point.
+ * All values are prototype fixtures — not real episode metadata.
+ */
+const NEXT_EPISODE: Record<string, NextEpisode> = {
+  ttl_love_island_usa: {
+    contentId: "ttl_love_island_usa",
+    title: "Love Island USA",
+    seasonNumber: 8,
+    episodeNumber: 12,
+    episodeTitle: "The Dumping",
+    hasNext: true,
+  },
+  ttl_deep_space_diner: {
+    contentId: "ttl_deep_space_diner",
+    title: "Deep Space Diner",
+    seasonNumber: 1,
+    episodeNumber: 5,
+    episodeTitle: "Closing Time",
+    hasNext: true,
+  },
+};
+
+/** Return next-episode metadata for a series, or null when none is modelled. */
+export function getNextEpisodeData(contentId: string): NextEpisode | null {
+  return NEXT_EPISODE[contentId] ?? null;
 }

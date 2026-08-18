@@ -3,7 +3,6 @@ import { Agent } from "./agent";
 import { ConversationState } from "./conversation-state";
 import { MockPeacockService } from "../peacock/MockPeacockService";
 import { prototypeStore } from "../state/prototype-store";
-import { STARTER_PROMPTS } from "./capabilities";
 
 /** Build a connected agent with no artificial delay for deterministic tests. */
 function connectedAgent() {
@@ -302,21 +301,12 @@ describe("Cross-service discovery (Phase 2B)", () => {
   });
 });
 
-describe("Neutral home state (default starter prompts)", () => {
+describe("Neutral home state (provider-neutral first run)", () => {
   beforeEach(() => {
     prototypeStore.clearAll();
   });
 
-  it("keeps the default starter prompts provider-neutral (no Peacock on the home screen)", () => {
-    expect(STARTER_PROMPTS).toEqual([
-      "What should I watch tonight?",
-      "Recommend a funny movie",
-      "Where can I watch Jaws?",
-    ]);
-    expect(STARTER_PROMPTS.some((p) => /peacock/i.test(p))).toBe(false);
-  });
-
-  it("answers the 'Where can I watch Jaws?' starter with a neutral cross-service card that includes Peacock", async () => {
+  it("answers a neutral 'Where can I watch Jaws?' prompt with a cross-service card that includes Peacock", async () => {
     const agent = disconnectedAgent();
     const res = await agent.respond("Where can I watch Jaws?");
     expect(res.card?.kind).toBe("where_to_watch");
@@ -444,5 +434,50 @@ describe("Intent + entity routing hardening", () => {
     const res = await agent.respond("What should I watch tonight?");
     expect(res.card).toBeUndefined();
     expect(agent.ctx.isAwaitingRecommendCriteria()).toBe(true);
+  });
+
+  // --- Continue Watching (GREEN existing-account capability) ---
+
+  it("maps 'Continue Love Island' to a resume of that title", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("Continue Love Island");
+    expect(res.debug?.intent).toBe("resume_title");
+    expect(res.card?.kind).toBe("continue_watching");
+    expect(res.text.toLowerCase()).toContain("resuming love island");
+  });
+
+  it("maps 'Resume my last show' to the most recent in-progress title", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("Resume my last show");
+    expect(res.debug?.intent).toBe("resume_last");
+    expect(res.card?.kind).toBe("continue_watching");
+  });
+
+  it("maps \"What's next in Love Island?\" to the next episode", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("What's next in Love Island?");
+    expect(res.debug?.intent).toBe("next_episode");
+    expect(res.text).toContain("E12");
+  });
+
+  it("maps 'Show me things I haven't finished' to the unfinished rail", async () => {
+    const agent = connectedAgent();
+    const res = await agent.respond("Show me things I haven't finished");
+    expect(res.debug?.intent).toBe("unfinished");
+    expect(res.card?.kind).toBe("continue_watching");
+  });
+
+  it("guards Continue Watching behind the simulated connection", async () => {
+    const agent = disconnectedAgent();
+    const res = await agent.respond("What was I watching?");
+    expect(res.card?.kind).toBe("connect");
+    expect(res.actions?.[0].kind).toBe("connect");
+  });
+
+  it("keeps 'continue watching it' (pronoun) as a playback handoff, not the rail", async () => {
+    const agent = connectedAgent();
+    await agent.respond("I want to watch Love Island USA");
+    const res = await agent.respond("continue watching it in Peacock");
+    expect(res.debug?.intent).toBe("open_in_peacock");
   });
 });

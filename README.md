@@ -5,6 +5,13 @@ A simulated Peacock account connector rendered as a small chat UI. It is a
 and no secrets**. The "connection" is a persona picker — the app never asks for
 a username, password, MFA, or payment details.
 
+Its purpose is to demonstrate to Peacock stakeholders what an OpenAI/ChatGPT
+Peacock plugin **could** and **could not** do under OpenAI's published plugin
+guidance. Each capability is classified GREEN / YELLOW / RED — see the
+[OpenAI policy matrix](docs/openai-policy-matrix.md) and the
+[policy test script](docs/policy-test-script.md). The single source of truth for
+the classifications is [`src/policy/policy.ts`](src/policy/policy.ts).
+
 ## Overview
 
 The prototype demonstrates how a Peacock connector could answer account
@@ -45,6 +52,7 @@ src/
   components/  Chat UI, Peacock cards, prototype controls
   data/        Fixtures: personas, plans, catalog
   peacock/     PeacockService contract, MockPeacockService, Zod schemas, types
+  policy/      GREEN/YELLOW/RED policy model (single source of truth) + tests
   state/       Framework-agnostic prototype store + React binding
   tools/       MCP-compatible tool definitions + runTool registry
 ```
@@ -95,18 +103,32 @@ GitHub. Prefer path (A) if Actions/Pages are restricted.
 - **taylor** — Apple-billed; some actions blocked (billed externally).
 - **morgan** — lapsed subscription with prior watch history.
 
+## Continue Watching
+
+A GREEN existing-account capability backed by mock viewing fixtures per persona.
+It answers "what was I watching?", "where did I leave off?", "continue
+\<title\>", "resume my last show", "show me things I haven't finished", and
+"what's next in \<series\>?" via read-only tools (`get_viewing_history`,
+`get_continue_watching`, `get_resume_position`, `get_next_episode`). Nothing here
+mutates viewing state; Resume hands off to the simulated Peacock playback flow.
+
 ## Prototype controls
 
 Connect / switch persona, disconnect, **Reset scenario** (restore fixtures),
-and **Clear all local state**. A **Debug** toggle shows a tool-activity panel
-listing which Peacock tool each assistant turn invoked.
+and **Clear all local state**. A **Show tool activity** toggle shows which
+Peacock tool each assistant turn invoked; a **Show OpenAI policy status** toggle
+badges each reply GREEN / YELLOW / RED for stakeholder review.
 
 ## Product-policy note
 
-Simulated commerce (upgrade/downgrade/cancel) is a **concept-evaluation
-capability only** and is **NOT an approved OpenAI production feature**. It is
-defined on the service contract for parity but is not wired into the Phase 1
-agent, tools, or UI.
+Commerce (upgrade / new subscription / reactivation / display-plans / checkout)
+is **RED** — not permitted by current OpenAI plugin guidance — and cancel /
+downgrade / pause are **YELLOW** (require OpenAI clarification). The service
+layer enforces this as a hard floor: every commerce method throws and mutates
+nothing (`PolicyProhibitedError` for confirmed plan change,
+`PolicyClarificationRequiredError` for the rest). No commerce tool is registered;
+the only mutating tools are the two reversible watchlist writes. See
+[docs/openai-policy-matrix.md](docs/openai-policy-matrix.md).
 
 ## Security note
 

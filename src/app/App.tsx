@@ -32,6 +32,7 @@ export function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [debug, setDebug] = useState(false);
+  const [policyMode, setPolicyMode] = useState(false);
   // Message ids whose inline title-offer preview player is currently shown.
   const [previewOpenIds, setPreviewOpenIds] = useState<Set<string>>(new Set());
   const pendingResume = useRef<string | null>(null);
@@ -65,6 +66,8 @@ export function App() {
           actions: res.actions,
           toolName: res.toolName,
           debug: res.debug,
+          policy: res.policy,
+          policySource: res.policySource,
         },
       ]);
     } finally {
@@ -88,7 +91,14 @@ export function App() {
       });
       return;
     }
-    if (action.kind === "open" && action.contentId) {
+    if (action.kind === "plans_info") {
+      // Informational only — open the neutral plans page in a new tab. Never a
+      // checkout or plan-selection surface (GREEN entitlement-gap explanation).
+      if (action.resumeText) window.open(action.resumeText, "_blank", "noopener,noreferrer");
+      return;
+    }
+    // Both "open" and "resume" hand off to the simulated Peacock playback flow.
+    if ((action.kind === "open" || action.kind === "resume") && action.contentId) {
       void openInPeacock(action.contentId);
     }
   }
@@ -107,6 +117,8 @@ export function App() {
           actions: res.actions,
           toolName: res.toolName,
           debug: res.debug,
+          policy: res.policy,
+          policySource: res.policySource,
         },
       ]);
     } finally {
@@ -149,6 +161,7 @@ export function App() {
         messages={messages}
         pending={pending}
         debug={debug}
+        policyMode={policyMode}
         previewOpenIds={previewOpenIds}
         peacockConnected={connectedPersonaId !== null}
         onSend={handleSend}
@@ -167,8 +180,10 @@ export function App() {
         open={settingsOpen}
         connectedPersonaId={connectedPersonaId}
         debug={debug}
+        policyMode={policyMode}
         onSelectPersona={(id) => prototypeStore.connect(id)}
         onToggleDebug={() => setDebug((d) => !d)}
+        onTogglePolicy={() => setPolicyMode((p) => !p)}
         onDisconnect={() => prototypeStore.disconnect()}
         onReset={() => {
           prototypeStore.resetScenario();
